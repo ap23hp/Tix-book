@@ -79,3 +79,36 @@ Date: 2 Nov 2026
 - Drafts can be saved unfinished: save now, complete later
 **Trade-off:** The rules live in code, so they need tests to make sure they're enforced.
 **Revisit if:** The same rule is needed in many places; move it into one shared validation function.
+
+## 008 — Hold expiry: store the end time
+Date: 2 Nov 2026
+
+**Options considered:** Store when the hold started vs when it expires
+**Decision:** `holdExpiresAt` on the booking (now + 5 minutes, set by the server). Nullable, because free bookings skip the hold.
+**Why:**
+- The cron job's query is simple: status = HELD and holdExpiresAt < now
+- The frontend countdown uses the server's time, not a local 5:00
+**Trade-off:** Each hold’s end time is fixed when it’s created.
+**Revisit if:** Hold length needs to vary per event.
+
+## 009 — Booking stores price per seat at time of booking
+Date: 2 Nov 2026
+
+**Options considered:** Read the price from the event vs store it on the booking
+**Decision:** `unitPricePence` on the booking. Total = unitPricePence × seats (calculated).
+**Why:**
+- Organisers can change the event price later; existing bookings must keep the price they paid
+- Total is calculated, not stored, so it can't go out of sync (same idea as decision 005)
+**Trade-off:** The price exists in two places (event's current price, booking's paid price), but they mean different things.
+**Revisit if:** Booking fees or discounts are added; then store totalPence as well.
+
+## 010 — Idempotency key on bookings
+Date: 2 Nov 2026
+
+**Decision:** The frontend creates a UUID when the seat sheet opens and sends it with every "hold seats" request. The booking stores it in `idempotencyKey` with a unique constraint.
+**Why:**
+- Double taps, slow networks and retries could create two bookings
+- The unique constraint makes the database reject duplicates, even if both requests arrive at the same moment
+- The server returns the existing booking, so the user sees one booking, no error
+**Trade-off:** Extra column and handling in the API.
+**Revisit if:** Other actions (like payment) also need protection from repeats.
