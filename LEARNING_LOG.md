@@ -79,3 +79,41 @@
 - **Why:** The Grammarly browser extension added these attributes after the page loaded but before React hydrated. So the browser's HTML no longer matched the server's HTML.
 - **How I confirmed it:** Opened the page in an incognito window (extensions off). The error disappeared.
 - **Fix:** Either ignore it (harmless), or add `suppressHydrationWarning` to the `<body>` tag in `app/layout.tsx`. That silences mismatches on `<body>` only; real mismatches in my own components still show.
+
+### Express
+- Express is a framework built on top of Node. Node can make a web server on its own (http module), but we will have to handle routing, reading requests and sending responses by hand. Express does that for us.it's a layer on top of Node
+
+### Routes
+- A route = HTTP method + path + a handler function.
+- GET /events and POST /events are DIFFERENT routes on the same path.
+- Tixbook examples:
+  - GET /events → list events
+  - GET /events/:id → get one event
+  - POST /events → create an event
+  - GET /health → check the server is alive
+
+### GET vs POST
+- GET: ask the server for data. Changes nothing.
+- POST: send data to the server (in the request body), usually to create something. The server may send the created item back.
+
+### /health endpoint
+- A simple endpoint that returns { "status": "ok" } with status 200.
+- Called by other systems, not people: Render (my host) checks the server is up; UptimeRobot alerts me if it stops answering.
+
+### Why TypeScript?
+- TypeScript finds mistakes while I'm writing code, before it runs. JavaScript would only break later.
+
+### What does tsx do?
+- Node only understands JavaScript. My files are TypeScript.
+- tsx runs my TypeScript files directly while I'm coding.
+- `tsx watch` restarts the server every time I save.
+- tsx does NOT check for type errors. My editor and `tsc` do that.
+
+### src vs dist
+- `src/` = the TypeScript code I write.
+- `dist/` = the JavaScript made from it by `tsc`. Node runs this in production.
+- dist is not committed to Git because it can always be made again.
+
+### The flow
+- While coding: `npm run dev` → tsx runs src/index.ts
+- For production: `npm run build` → tsc makes dist/ → `npm run start` runs dist/index.js
