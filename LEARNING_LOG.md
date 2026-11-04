@@ -117,3 +117,57 @@
 ### The flow
 - While coding: `npm run dev` → tsx runs src/index.ts
 - For production: `npm run build` → tsc makes dist/ → `npm run start` runs dist/index.js
+
+### Prisma setup (big picture)
+- Goal: my API needs to save and read data (users, events, bookings) in Neon.
+- The database only understands SQL. Prisma lets me write TypeScript instead.
+- Steps:
+  1. Neon = the database (hosted Postgres in Frankfurt)
+  2. .env holds DATABASE_URL (the address + password; never committed)
+  3. `npx prisma init` created:
+     - `prisma/schema.prisma` → where my models (tables) go
+     - `prisma7.config.ts` → tells Prisma where the schema, migrations and database URL are
+  4. `dotenv` reads .env into `process.env` (the config file needs it)
+  5. Write models → `npx prisma migrate dev` creates real tables → seed fake data
+- `generator client` → Prisma writes TypeScript code (the client) into `src/generated/prisma`. It's generated, so not committed.
+- Prisma's comment suggesting `npx create-db` is Prisma advertising its own database. I kept Neon: already set up, free plan checked, and the ORM and database host stay separate.
+
+### Enum
+- A fixed list of allowed values. Anything else is rejected.
+- Example: `enum Role { ATTENDEE ORGANISER }`
+- Why not String? A string allows typos ("orgniser"). An enum is checked by the database AND TypeScript (autocomplete + red underline on typos).
+
+### Naming conventions (habits, not rules; be consistent)
+| What | Style | Example |
+|---|---|---|
+| Model names | PascalCase | User, Event, Booking |
+| Field names | camelCase | passwordHash, createdAt |
+| Enum names | PascalCase | Role, EventStatus |
+| Enum values | UPPER_CASE | ATTENDEE, IN_PERSON |
+- Lowercase would work too, but conventions help other developers read the code instantly.
+
+### Prisma syntax cheat sheet
+- Each line: `fieldName Type options`
+- Types: `String`, `Int`, `DateTime`, or an enum name
+- `?` after the type → nullable (can be empty). No `?` → required.
+- `@id` → primary key
+- `@default(uuid())` → auto-generate a unique ID
+- `@unique` → no duplicates
+- `@default(now())` → set to the current time when created
+- `@default(DRAFT)` → default enum value
+- `@updatedAt` → Prisma updates it automatically on every change
+- `events Event[]` → "has many". NOT a real column; lets me write `user.events`.
+
+### Foreign keys in Prisma
+```prisma
+organiserId String
+organiser   User   @relation(fields: [organiserId], references: [id])
+```
+- `organiserId` → the REAL column (stores the user's id)
+- `organiser` → NOT a column; lets me write `event.organiser.name`
+- `fields: [organiserId]` = my column; `references: [id]` = the other table's id
+- The real link always lives on the "many" side (Event has organiserId; Booking has userId and eventId).
+
+### Commands
+- `npx prisma format` → tidies and aligns the schema file
+- `npx prisma validate` → checks the schema for mistakes
