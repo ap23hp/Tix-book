@@ -28,3 +28,15 @@ Testing approach, accessibility checks, known issues and things to review.
 - Seats left = seatLimit − seats in HELD + CONFIRMED bookings, calculated with a database `aggregate` (decision 005).
 - ⚠️ Phase 4: a HELD booking whose hold has expired still counts as taken until the cron job marks it EXPIRED. Seats left may be slightly too low for up to a minute. Fix in phase 4: also check `holdExpiresAt > now` when counting held seats.
 - To do (phase 3): the events list doesn't include seats left yet. Adding it per event needs care to avoid an N+1 query problem.
+
+## Events API testing
+- Tested manually with curl and the browser:
+  - GET /events → 4 published upcoming events, sorted; drafts and cancelled hidden; no meetingLink
+  - GET /events/:id → seatsLeft correct (28, and 0 for sold out); 404 for a fake id and for the draft
+  - POST /events → 201 for valid data; 400 with field errors for invalid data; 400 for broken JSON
+  - Unknown route → 404 JSON
+- Automated tests moved to a separate ticket: needs Jest ESM setup, splitting app from listen, and a separate test database so tests don't touch dev data.
+
+## Known gaps (temporary)
+- ⚠️ POST /events takes organiserId from the request body. Insecure: anyone could create events as any organiser. Phase 2: take it from the logged-in user.
+- Cover image is not yet required to publish (decision 007), because there's no image upload yet. Add the rule when uploads exist.
