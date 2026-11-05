@@ -233,3 +233,123 @@ organiser   User   @relation(fields: [organiserId], references: [id])
 - `organiser` → not a column; the link to the User.
 - `@relation(fields: [organiserId], references: [id])` → "my organiserId points to User's id".
 - Named `organiserId` (not `userId`) because it says what role that user plays for the event.
+
+## 5 Nov 2026 (continued)
+
+### Events API planning
+- GET /events → only PUBLISHED events that haven't started yet, sorted by start date.
+- GET /events/:id → 404 if the event doesn't exist OR is a draft. For the public, a draft doesn't exist yet (and 404 doesn't reveal that a hidden event exists).
+- POST /events → 201 Created on success; 400 Bad Request for invalid input.
+- Seats left = seatLimit − seats in HELD + CONFIRMED bookings.
+  - Held seats count too. Otherwise I'd sell seats someone is in the middle of paying for.
+
+### Shared Prisma client
+- `new PrismaClient()` opens database connections. Connections are slow to open, and the database allows only a limited number.
+- Bad: create a new client in every route or request → too many connections, slow, app starts failing.
+- Good: create it ONCE in `src/lib/prisma.ts`, export it, and import it everywhere. All routes reuse the same connections.
+- Like a taxi company reusing its cars instead of buying a new car for every passenger.
+- I create one Prisma client in a shared module and import it everywhere, so connections are reused instead of opened on every request."
+- Related to connection pooling (phase 7).
+
+## Events API
+
+### Express Router
+- A Router is a mini-app that groups related routes in their own file (`src/routes/events.ts`).
+- Mounted in index.ts with `app.use("/api/v1/events", eventsRouter)`.
+- `eventsRouter.get("/")` → GET /api/v1/events; `eventsRouter.get("/:id")` → GET /api/v1/events/:id.
+- New routes in the router need no change in index.ts.
+
+### Route parameters
+- `/:id` → whatever is in the URL ends up in `req.params.id`.
+
+### Prisma queries I used
+- `findMany({ where, orderBy })` → many rows. `gt` = greater than; `asc` = soonest first.
+- `findFirst({ where: { id, status: "PUBLISHED" } })` → one row matching ALL conditions (so drafts aren't found).
+- `aggregate({ _sum: { seats: true } })` → the database adds up the seats for me.
+- `status: { in: ["HELD", "CONFIRMED"] }` → status is one of these.
+- `omit: { meetingLink: true }` → hide a field. `select` = show only chosen fields (safer allowlist).
+- `?? 0` → if the sum is null (no bookings), use 0.
+
+### Always `return` after sending a response
+- After `res.status(404).json(...)`, write `return`. Otherwise the code carries on and tries to send a second response, which crashes.
+
+### Status codes used
+- 200 OK (read), 201 Created (new event), 400 Bad Request (invalid input or bad JSON), 404 Not Found (missing or draft), 500 Server Error (our bug).
+
+### Zod (validation)
+- TypeScript checks my code while writing. Zod checks incoming data while the app runs.
+- `safeParse(req.body)` → success, or a list of problems (doesn't crash).
+- `z.coerce.date()` → JSON has no date type; converts date text into a real Date.
+- `.trim().min(1)` → "   " doesn't count as a title.
+- `.superRefine(...)` → rules comparing several fields (end after start; in-person needs a venue; publishing online needs a link).
+
+### Central error handling
+- A 404 handler AFTER all routes catches unknown URLs → JSON instead of an HTML page.
+- An error handler has FOUR parameters (err, req, res, next); that's how Express recognises it.
+- Log the full error for me (console.error); send only a safe message to the client.
+- Broken JSON → express.json() throws `entity.parse.failed` → return 400, not 500.
+- Express 5 passes errors from async routes to the error handler automatically.
+
+### Testing with curl
+- `curl -X POST url -H "Content-Type: application/json" -d '{...}'` sends a POST with JSON.
+- Add `-i` to see the status code.
+
+## 5 Nov 2026 — Events API walkthrough 
+
+### src/lib/prisma.ts
+- Creates ONE Prisma client, connected to Neon using DATABASE_URL, and exports it so the whole app reuses it.
+- Why one: opening database connections is slow and limited. A new client on every request = too many connections (taxi company reusing its cars).
+- Why a `lib/` folder: just organisation. `routes/` = endpoints, `schemas/` = validation rules, `lib/` = shared helpers the rest of the app borrows.
+
+### GET /api/v1/events
+- The router uses "/" because it's mounted at /api/v1/events in index.ts. "/" = the start of that path. Writing "/events" would make /api/v1/events/events.
+- Returns only PUBLISHED events in the future, soonest first, with meetingLink hidden.
+
+### async / await (gap)
+- Database calls take time and return a Promise: a receipt for data that will arrive later.
+- `await` = wait here until the real data arrives. Without it, I'd send the receipt (an empty `{}`), not the events.
+- `async` = needed on a function that uses `await`.
+- While waiting, Node can handle other requests (event loop).
+- "Database calls return a Promise; await waits for the real data; async lets the function use await."
+
+### GET /api/v1/events/:id
+- Finds the event where the id from the URL (req.params.id) matches AND status is PUBLISHED, with meetingLink hidden.
+- Not found → 404, then `return`.
+- Why `return`: without it, the code continues, `event.id` crashes on null, and Express tries to send a second response.
+- Seats taken = sum of seats in HELD + CONFIRMED bookings. Seats left = seatLimit − seats taken.
+- Nothing forces seatsLeft above 0. 0 = sold out (correct). A negative number would mean we oversold, a real bug to PREVENT in phase 4, not hide with Math.max.
+- `?? 0` (gap): with no bookings, the sum is null, not 0. TypeScript won't allow `seatLimit - null`. `??` gives a fallback when a value is null or undefined.
+
+### Zod and POST /api/v1/events
+- Zod checks incoming data before it's written to the database.
+- Why TypeScript can't do it (gap): TypeScript types are REMOVED when the code runs (compiled to plain JS; tsx strips them too). Request data arrives at runtime, when TypeScript is gone. Zod is real code that runs on every request.
+  - Like a spell-checker (TypeScript) checking what I type vs opening every letter that arrives (Zod).
+- Two kinds of rules:
+  - Single-field, inside `z.object({...})`, e.g. `pricePence: z.number().int().min(0)` = a whole number, 0 or more. Rejects -5, 12.5 (no half pennies) and "1200" (text).
+  - Cross-field, inside `.superRefine(...)`: end after start; in person needs venue name + address; online + published needs a meeting link. Decision 007 in code.
+- POST flow:
+  1. Zod safeParse(req.body)
+  2. Problems → 400 with { field, message } list → return
+  3. Check organiserId belongs to a real ORGANISER → if not, 400 → return
+  4. prisma.event.create(...)
+  5. 201 + the new event
+- 400 = the client sent something wrong, nothing saved. 201 = a new event was created.
+- Why the organiser check: Zod checks the SHAPE of data; it can't look in the database to see if the user exists or is an organiser. "Zod checks the shape; the database checks the facts."
+
+### index.ts and middleware
+- `express.json()` is middleware: turns the raw JSON text in the request into a JS object on req.body. Without it, req.body is undefined.
+- Middleware = a function that runs between the request arriving and the route handler.
+- `app.use("/api/v1/events", eventsRouter)`: all event endpoints start with /api/v1/events.
+- Order matters (gap): Express runs middleware top to bottom, and the first thing that responds ends it.
+  - express.json → routes → 404 catch-all → error handler (only reached on errors)
+  - If the 404 handler came first, every request would get "Not found".
+- "Express middleware runs top to bottom: body parsing first, then routes, then the 404 catch-all, and the error handler last."
+
+### Testing the API (Jest + Supertest)
+- Split app.ts (builds the app, exports it) from index.ts (starts the server), so tests can use the app without starting a server.
+- Supertest sends fake HTTP requests straight to the app: `request(app).get("/health")`.
+- `describe` = a group of tests; `it` = one test; `expect(x).toBe(y)` = fails if they differ.
+- Test files must end in `.test.ts`. My `health.tests.ts` typo meant Jest found 0 tests.
+- Don't hard-code IDs in tests; get them from the list first, because IDs change on every reseed.
+- "Worker failed to exit gracefully" = something left open (the database connection). Fixed with `afterAll(() => prisma.$disconnect())`: teardown.
+- PORT must come from process.env.PORT, or Render can't reach the app.

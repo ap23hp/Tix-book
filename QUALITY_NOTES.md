@@ -20,3 +20,28 @@ Testing approach, accessibility checks, known issues and things to review.
 - Creates: 5 users (2 organisers, 3 attendees), 6 events (paid/free, in person/online, draft, cancelled, sold out), 3 bookings.
 - `faker.seed(42)` keeps the fake text the same every run.
 - To do later: add a safety check so the script refuses to run in production (e.g. check NODE_ENV).
+
+## Events API (api/src/routes/events.ts)
+- Public endpoints hide `meetingLink` using Prisma `omit`. The link should only appear on a booked ticket (later ticket).
+  - Possible improvement: use `select` (allowlist) instead of `omit`, so any new private field is hidden by default.
+- GET /events/:id returns 404 for drafts and cancelled events, the same as for missing events (doesn't reveal hidden events).
+- Seats left = seatLimit − seats in HELD + CONFIRMED bookings, calculated with a database `aggregate` (decision 005).
+- ⚠️ Phase 4: a HELD booking whose hold has expired still counts as taken until the cron job marks it EXPIRED. Seats left may be slightly too low for up to a minute. Fix in phase 4: also check `holdExpiresAt > now` when counting held seats.
+- To do (phase 3): the events list doesn't include seats left yet. Adding it per event needs care to avoid an N+1 query problem.
+
+## Events API testing
+- Tested manually with curl and the browser:
+  - GET /events → 4 published upcoming events, sorted; drafts and cancelled hidden; no meetingLink
+  - GET /events/:id → seatsLeft correct (28, and 0 for sold out); 404 for a fake id and for the draft
+  - POST /events → 201 for valid data; 400 with field errors for invalid data; 400 for broken JSON
+  - Unknown route → 404 JSON
+- Automated tests moved to a separate ticket: needs Jest ESM setup, splitting app from listen, and a separate test database so tests don't touch dev data.
+
+## Known gaps (temporary)
+- ⚠️ POST /events takes organiserId from the request body. Insecure: anyone could create events as any organiser. Phase 2: take it from the logged-in user.
+- Cover image is not yet required to publish (decision 007), because there's no image upload yet. Add the rule when uploads exist.
+
+## API tests
+- 5 tests (Jest + Supertest): /health; events list (published, upcoming, no meetingLink); event detail with seatsLeft; 404 for a missing event; POST invalid → 400 with field errors.
+- Tests currently run against the dev database and only READ data (or fail validation before touching it).
+- To do (follow-up ticket): separate Neon test branch + `.env.test` (and gitignore it); test for a valid POST → 201; draft → 404 test with its own test data.
