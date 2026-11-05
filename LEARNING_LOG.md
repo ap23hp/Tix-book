@@ -171,3 +171,65 @@ organiser   User   @relation(fields: [organiserId], references: [id])
 ### Commands
 - `npx prisma format` → tidies and aligns the schema file
 - `npx prisma validate` → checks the schema for mistakes
+
+## 5 Nov 2026
+
+### User model — line by line
+| Field | Required? | Rule | Why |
+|---|---|---|---|
+| `id` | auto | primary key, auto-generated | identifies each user |
+| `name` | yes | | everyone has a name |
+| `email` | yes | unique | no duplicate accounts |
+| `passwordHash` | no (`?`) | | Google users have no password |
+| `googleId` | no (`?`) | unique when filled | one Google account = one user |
+| `role` | yes | enum (ATTENDEE / ORGANISER) | only two allowed values |
+| `createdAt` | auto | `@default(now())` | when they signed up |
+| `updatedAt` | auto | `@updatedAt` | when the row last changed |
+| `events`, `bookings` | — | NOT real columns | lets code reach related rows (`user.events`) |
+
+
+### Where @ things come from
+- Anything starting with `@` is a Prisma attribute (a rule on a field): `@id`, `@unique`, `@default`, `@updatedAt`, `@relation`.
+- `@@` = a rule on the whole model (e.g. `@@index`).
+- `now()` and `uuid()` are Prisma functions, used inside `@default(...)`.
+- All built into Prisma. Look them up in the "Prisma schema reference" docs.
+
+### Unique + nullable (googleId)
+- `?` → can be empty (email/password users have no Google ID).
+- `@unique` → if filled, no two users can share it.
+- Postgres allows many empty (null) values in a unique column; only filled values must differ.
+
+### Event model — line by line
+| Field | Required? | Rule | Why |
+|---|---|---|---|
+| `id` | auto | primary key, `@default(uuid())` | identifies each event |
+| `title` | yes | | event name |
+| `description` | yes | | event details |
+| `category` | yes | | Comedy, Music, Business... |
+| `format` | yes | enum EventFormat (IN_PERSON / ONLINE) | the in-person / online toggle |
+| `status` | yes | enum EventStatus, `@default(DRAFT)` | new events start as drafts; only published ones are visible |
+| `startsAt` | yes | | start date + time |
+| `endsAt` | yes | | end date + time |
+| `doorsAt` | no (`?`) | | in-person only |
+| `timezone` | yes | | e.g. Europe/London |
+| `venueName` | no (`?`) | app checks it's filled for in-person | in-person only |
+| `venueAddress` | no (`?`) | app checks it's filled for in-person | in-person only |
+| `meetingLink` | no (`?`) | app requires it to publish an online event | online only |
+| `pricePence` | yes | whole number | £12.50 = 1250; 0 = free |
+| `seatLimit` | yes | | max seats; seats left is calculated (decision 005) |
+| `coverImageUrl` | no (`?`) | app requires it to publish | optional for drafts |
+| `createdAt` | auto | `@default(now())` | when created |
+| `updatedAt` | auto | `@updatedAt` | when last changed |
+| `organiserId` | yes | REAL column (foreign key) | stores the id of the User who created it |
+| `organiser` | — | NOT a column, `@relation(...)` | lets code write `event.organiser.name` |
+| `bookings` | — | NOT a column | one event has many bookings |
+
+### The relation, explained
+```prisma
+organiserId String
+organiser   User   @relation(fields: [organiserId], references: [id])
+```
+- `organiserId` → the real column. Holds a user's id.
+- `organiser` → not a column; the link to the User.
+- `@relation(fields: [organiserId], references: [id])` → "my organiserId points to User's id".
+- Named `organiserId` (not `userId`) because it says what role that user plays for the event.
