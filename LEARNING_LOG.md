@@ -345,3 +345,11 @@ organiser   User   @relation(fields: [organiserId], references: [id])
   - If the 404 handler came first, every request would get "Not found".
 - "Express middleware runs top to bottom: body parsing first, then routes, then the 404 catch-all, and the error handler last."
 
+### Testing the API (Jest + Supertest)
+- Split app.ts (builds the app, exports it) from index.ts (starts the server), so tests can use the app without starting a server.
+- Supertest sends fake HTTP requests straight to the app: `request(app).get("/health")`.
+- `describe` = a group of tests; `it` = one test; `expect(x).toBe(y)` = fails if they differ.
+- Test files must end in `.test.ts`. My `health.tests.ts` typo meant Jest found 0 tests.
+- Don't hard-code IDs in tests; get them from the list first, because IDs change on every reseed.
+- "Worker failed to exit gracefully" = something left open (the database connection). Fixed with `afterAll(() => prisma.$disconnect())`: teardown.
+- PORT must come from process.env.PORT, or Render can't reach the app.

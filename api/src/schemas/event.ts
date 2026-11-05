@@ -27,14 +27,21 @@ export const createEventSchema = z
         message: "End time must be after start time",
       });
     }
-    if (data.format === "IN_PERSON" && (!data.venueName || !data.venueAddress)) {
+    if (
+      data.format === "IN_PERSON" &&
+      (!data.venueName || !data.venueAddress)
+    ) {
       ctx.addIssue({
         code: "custom",
         path: ["venueName"],
         message: "Venue name and address are required for in-person events",
       });
     }
-    if (data.format === "ONLINE" && data.status === "PUBLISHED" && !data.meetingLink) {
+    if (
+      data.format === "ONLINE" &&
+      data.status === "PUBLISHED" &&
+      !data.meetingLink
+    ) {
       ctx.addIssue({
         code: "custom",
         path: ["meetingLink"],
