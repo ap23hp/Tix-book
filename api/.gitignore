@@ -3,3 +3,8 @@ node_modules
 .env
 
 /src/generated/prisma
+# AI agent skill files created by prisma init (kept locally, not committed)
+.claude/
+.windsurf/
+.agents/
+skills-lock.json

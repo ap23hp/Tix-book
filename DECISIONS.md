@@ -123,3 +123,14 @@ Date: 4 Nov 2026
 - The API talks to the database many times per request; users talk to the API once. So the database goes next to the API, not next to the users
 **Trade-off:** Users in London are slightly further from the API than they would be with a London host.
 **Revisit if:** The API moves to a host with a London region.
+
+## 012 — Database connection: sslmode=verify-full
+Date: 5 Nov 2026
+
+**Options considered:** sslmode=require vs sslmode=verify-full
+**Decision:** verify-full, in both .env and .env.example
+**Why:**
+- Encrypts the connection AND verifies the server's certificate, protecting against man-in-the-middle attacks
+- The pg package warned that `require` will become weaker in a future version; being explicit keeps it strict
+**Trade-off:** If the certificate can't be verified (e.g. an unusual network setup), the connection fails instead of falling back to a weaker mode. That's the safe behaviour.
+**Revisit if:** A hosting platform needs a different SSL setting.
