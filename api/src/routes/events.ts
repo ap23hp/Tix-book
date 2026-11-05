@@ -11,6 +11,7 @@ eventsRouter.get("/", async (_req, res) => {
       startsAt: { gt: new Date() },
     },
     orderBy: { startsAt: "asc" },
+    omit: { meetingLink: true }, // ← new: hide the meeting link
   });
 
   res.status(200).json(events);
