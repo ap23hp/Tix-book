@@ -233,3 +233,20 @@ organiser   User   @relation(fields: [organiserId], references: [id])
 - `organiser` → not a column; the link to the User.
 - `@relation(fields: [organiserId], references: [id])` → "my organiserId points to User's id".
 - Named `organiserId` (not `userId`) because it says what role that user plays for the event.
+
+## 5 Nov 2026 (continued)
+
+### Events API planning
+- GET /events → only PUBLISHED events that haven't started yet, sorted by start date.
+- GET /events/:id → 404 if the event doesn't exist OR is a draft. For the public, a draft doesn't exist yet (and 404 doesn't reveal that a hidden event exists).
+- POST /events → 201 Created on success; 400 Bad Request for invalid input.
+- Seats left = seatLimit − seats in HELD + CONFIRMED bookings.
+  - Held seats count too. Otherwise I'd sell seats someone is in the middle of paying for.
+
+### Shared Prisma client
+- `new PrismaClient()` opens database connections. Connections are slow to open, and the database allows only a limited number.
+- Bad: create a new client in every route or request → too many connections, slow, app starts failing.
+- Good: create it ONCE in `src/lib/prisma.ts`, export it, and import it everywhere. All routes reuse the same connections.
+- Like a taxi company reusing its cars instead of buying a new car for every passenger.
+- I create one Prisma client in a shared module and import it everywhere, so connections are reused instead of opened on every request."
+- Related to connection pooling (phase 7).

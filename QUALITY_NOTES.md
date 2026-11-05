@@ -20,3 +20,11 @@ Testing approach, accessibility checks, known issues and things to review.
 - Creates: 5 users (2 organisers, 3 attendees), 6 events (paid/free, in person/online, draft, cancelled, sold out), 3 bookings.
 - `faker.seed(42)` keeps the fake text the same every run.
 - To do later: add a safety check so the script refuses to run in production (e.g. check NODE_ENV).
+
+## Events API (api/src/routes/events.ts)
+- Public endpoints hide `meetingLink` using Prisma `omit`. The link should only appear on a booked ticket (later ticket).
+  - Possible improvement: use `select` (allowlist) instead of `omit`, so any new private field is hidden by default.
+- GET /events/:id returns 404 for drafts and cancelled events, the same as for missing events (doesn't reveal hidden events).
+- Seats left = seatLimit − seats in HELD + CONFIRMED bookings, calculated with a database `aggregate` (decision 005).
+- ⚠️ Phase 4: a HELD booking whose hold has expired still counts as taken until the cron job marks it EXPIRED. Seats left may be slightly too low for up to a minute. Fix in phase 4: also check `holdExpiresAt > now` when counting held seats.
+- To do (phase 3): the events list doesn't include seats left yet. Adding it per event needs care to avoid an N+1 query problem.
