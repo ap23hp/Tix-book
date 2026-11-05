@@ -79,3 +79,157 @@
 - **Why:** The Grammarly browser extension added these attributes after the page loaded but before React hydrated. So the browser's HTML no longer matched the server's HTML.
 - **How I confirmed it:** Opened the page in an incognito window (extensions off). The error disappeared.
 - **Fix:** Either ignore it (harmless), or add `suppressHydrationWarning` to the `<body>` tag in `app/layout.tsx`. That silences mismatches on `<body>` only; real mismatches in my own components still show.
+
+### Express
+- Express is a framework built on top of Node. Node can make a web server on its own (http module), but we will have to handle routing, reading requests and sending responses by hand. Express does that for us.it's a layer on top of Node
+
+### Routes
+- A route = HTTP method + path + a handler function.
+- GET /events and POST /events are DIFFERENT routes on the same path.
+- Tixbook examples:
+  - GET /events → list events
+  - GET /events/:id → get one event
+  - POST /events → create an event
+  - GET /health → check the server is alive
+
+### GET vs POST
+- GET: ask the server for data. Changes nothing.
+- POST: send data to the server (in the request body), usually to create something. The server may send the created item back.
+
+### /health endpoint
+- A simple endpoint that returns { "status": "ok" } with status 200.
+- Called by other systems, not people: Render (my host) checks the server is up; UptimeRobot alerts me if it stops answering.
+
+### Why TypeScript?
+- TypeScript finds mistakes while I'm writing code, before it runs. JavaScript would only break later.
+
+### What does tsx do?
+- Node only understands JavaScript. My files are TypeScript.
+- tsx runs my TypeScript files directly while I'm coding.
+- `tsx watch` restarts the server every time I save.
+- tsx does NOT check for type errors. My editor and `tsc` do that.
+
+### src vs dist
+- `src/` = the TypeScript code I write.
+- `dist/` = the JavaScript made from it by `tsc`. Node runs this in production.
+- dist is not committed to Git because it can always be made again.
+
+### The flow
+- While coding: `npm run dev` → tsx runs src/index.ts
+- For production: `npm run build` → tsc makes dist/ → `npm run start` runs dist/index.js
+
+### Prisma setup (big picture)
+- Goal: my API needs to save and read data (users, events, bookings) in Neon.
+- The database only understands SQL. Prisma lets me write TypeScript instead.
+- Steps:
+  1. Neon = the database (hosted Postgres in Frankfurt)
+  2. .env holds DATABASE_URL (the address + password; never committed)
+  3. `npx prisma init` created:
+     - `prisma/schema.prisma` → where my models (tables) go
+     - `prisma7.config.ts` → tells Prisma where the schema, migrations and database URL are
+  4. `dotenv` reads .env into `process.env` (the config file needs it)
+  5. Write models → `npx prisma migrate dev` creates real tables → seed fake data
+- `generator client` → Prisma writes TypeScript code (the client) into `src/generated/prisma`. It's generated, so not committed.
+- Prisma's comment suggesting `npx create-db` is Prisma advertising its own database. I kept Neon: already set up, free plan checked, and the ORM and database host stay separate.
+
+### Enum
+- A fixed list of allowed values. Anything else is rejected.
+- Example: `enum Role { ATTENDEE ORGANISER }`
+- Why not String? A string allows typos ("orgniser"). An enum is checked by the database AND TypeScript (autocomplete + red underline on typos).
+
+### Naming conventions (habits, not rules; be consistent)
+| What | Style | Example |
+|---|---|---|
+| Model names | PascalCase | User, Event, Booking |
+| Field names | camelCase | passwordHash, createdAt |
+| Enum names | PascalCase | Role, EventStatus |
+| Enum values | UPPER_CASE | ATTENDEE, IN_PERSON |
+- Lowercase would work too, but conventions help other developers read the code instantly.
+
+### Prisma syntax cheat sheet
+- Each line: `fieldName Type options`
+- Types: `String`, `Int`, `DateTime`, or an enum name
+- `?` after the type → nullable (can be empty). No `?` → required.
+- `@id` → primary key
+- `@default(uuid())` → auto-generate a unique ID
+- `@unique` → no duplicates
+- `@default(now())` → set to the current time when created
+- `@default(DRAFT)` → default enum value
+- `@updatedAt` → Prisma updates it automatically on every change
+- `events Event[]` → "has many". NOT a real column; lets me write `user.events`.
+
+### Foreign keys in Prisma
+```prisma
+organiserId String
+organiser   User   @relation(fields: [organiserId], references: [id])
+```
+- `organiserId` → the REAL column (stores the user's id)
+- `organiser` → NOT a column; lets me write `event.organiser.name`
+- `fields: [organiserId]` = my column; `references: [id]` = the other table's id
+- The real link always lives on the "many" side (Event has organiserId; Booking has userId and eventId).
+
+### Commands
+- `npx prisma format` → tidies and aligns the schema file
+- `npx prisma validate` → checks the schema for mistakes
+
+## 5 Nov 2026
+
+### User model — line by line
+| Field | Required? | Rule | Why |
+|---|---|---|---|
+| `id` | auto | primary key, auto-generated | identifies each user |
+| `name` | yes | | everyone has a name |
+| `email` | yes | unique | no duplicate accounts |
+| `passwordHash` | no (`?`) | | Google users have no password |
+| `googleId` | no (`?`) | unique when filled | one Google account = one user |
+| `role` | yes | enum (ATTENDEE / ORGANISER) | only two allowed values |
+| `createdAt` | auto | `@default(now())` | when they signed up |
+| `updatedAt` | auto | `@updatedAt` | when the row last changed |
+| `events`, `bookings` | — | NOT real columns | lets code reach related rows (`user.events`) |
+
+
+### Where @ things come from
+- Anything starting with `@` is a Prisma attribute (a rule on a field): `@id`, `@unique`, `@default`, `@updatedAt`, `@relation`.
+- `@@` = a rule on the whole model (e.g. `@@index`).
+- `now()` and `uuid()` are Prisma functions, used inside `@default(...)`.
+- All built into Prisma. Look them up in the "Prisma schema reference" docs.
+
+### Unique + nullable (googleId)
+- `?` → can be empty (email/password users have no Google ID).
+- `@unique` → if filled, no two users can share it.
+- Postgres allows many empty (null) values in a unique column; only filled values must differ.
+
+### Event model — line by line
+| Field | Required? | Rule | Why |
+|---|---|---|---|
+| `id` | auto | primary key, `@default(uuid())` | identifies each event |
+| `title` | yes | | event name |
+| `description` | yes | | event details |
+| `category` | yes | | Comedy, Music, Business... |
+| `format` | yes | enum EventFormat (IN_PERSON / ONLINE) | the in-person / online toggle |
+| `status` | yes | enum EventStatus, `@default(DRAFT)` | new events start as drafts; only published ones are visible |
+| `startsAt` | yes | | start date + time |
+| `endsAt` | yes | | end date + time |
+| `doorsAt` | no (`?`) | | in-person only |
+| `timezone` | yes | | e.g. Europe/London |
+| `venueName` | no (`?`) | app checks it's filled for in-person | in-person only |
+| `venueAddress` | no (`?`) | app checks it's filled for in-person | in-person only |
+| `meetingLink` | no (`?`) | app requires it to publish an online event | online only |
+| `pricePence` | yes | whole number | £12.50 = 1250; 0 = free |
+| `seatLimit` | yes | | max seats; seats left is calculated (decision 005) |
+| `coverImageUrl` | no (`?`) | app requires it to publish | optional for drafts |
+| `createdAt` | auto | `@default(now())` | when created |
+| `updatedAt` | auto | `@updatedAt` | when last changed |
+| `organiserId` | yes | REAL column (foreign key) | stores the id of the User who created it |
+| `organiser` | — | NOT a column, `@relation(...)` | lets code write `event.organiser.name` |
+| `bookings` | — | NOT a column | one event has many bookings |
+
+### The relation, explained
+```prisma
+organiserId String
+organiser   User   @relation(fields: [organiserId], references: [id])
+```
+- `organiserId` → the real column. Holds a user's id.
+- `organiser` → not a column; the link to the User.
+- `@relation(fields: [organiserId], references: [id])` → "my organiserId points to User's id".
+- Named `organiserId` (not `userId`) because it says what role that user plays for the event.

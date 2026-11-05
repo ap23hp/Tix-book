@@ -112,3 +112,14 @@ Date: 2 Nov 2026
 - The server returns the existing booking, so the user sees one booking, no error
 **Trade-off:** Extra column and handling in the API.
 **Revisit if:** Other actions (like payment) also need protection from repeats.
+
+## 011 — Database region: Frankfurt
+Date: 4 Nov 2026
+
+**Options considered:** Neon London vs Neon Frankfurt
+**Decision:** Frankfurt (AWS Europe Central 1)
+**Why:**
+- Render (API host) has no London region; its only European region is Frankfurt
+- The API talks to the database many times per request; users talk to the API once. So the database goes next to the API, not next to the users
+**Trade-off:** Users in London are slightly further from the API than they would be with a London host.
+**Revisit if:** The API moves to a host with a London region.

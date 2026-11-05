@@ -1,0 +1,99 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  ATTENDEE
+  ORGANISER
+}
+
+// fieldName   Type   options
+model User {
+  id           String   @id @default(uuid())
+  name         String
+  email        String   @unique
+  passwordHash String?
+  googleId     String?  @unique
+  role         Role
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  events   Event[]
+  bookings Booking[]
+}
+
+enum EventFormat {
+  IN_PERSON
+  ONLINE
+}
+
+enum EventStatus {
+  DRAFT
+  PUBLISHED
+  CANCELLED
+}
+
+model Event {
+  id            String      @id @default(uuid())
+  title         String
+  description   String
+  category      String
+  format        EventFormat
+  status        EventStatus @default(DRAFT)
+  startsAt      DateTime
+  endsAt        DateTime
+  doorsAt       DateTime?
+  timezone      String
+  venueName     String?
+  venueAddress  String?
+  meetingLink   String?
+  pricePence    Int
+  seatLimit     Int
+  coverImageUrl String?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  organiserId String
+  organiser   User   @relation(fields: [organiserId], references: [id])
+
+  bookings Booking[]
+}
+
+enum BookingStatus {
+  HELD
+  CONFIRMED
+  EXPIRED
+  CANCELLED
+  REFUNDED
+}
+
+model Booking {
+  id              String        @id @default(uuid())
+  seats           Int
+  status          BookingStatus @default(HELD)
+  unitPricePence  Int
+  holdExpiresAt   DateTime?
+  reference       String        @unique
+  stripeSessionId String?       @unique
+  idempotencyKey  String        @unique
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
+  eventId String
+  event   Event  @relation(fields: [eventId], references: [id])
+}
+
+
