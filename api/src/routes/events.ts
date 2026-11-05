@@ -16,3 +16,28 @@ eventsRouter.get("/", async (_req, res) => {
 
   res.status(200).json(events);
 });
+
+// GET /api/v1/events/:id → one published event, with seats left
+eventsRouter.get("/:id", async (req, res) => {
+  const event = await prisma.event.findFirst({
+    where: { id: req.params.id, status: "PUBLISHED" },
+    omit: { meetingLink: true },
+  });
+
+  if (!event) {
+    res.status(404).json({ error: "Event not found" });
+    return;
+  }
+
+  const taken = await prisma.booking.aggregate({
+    where: {
+      eventId: event.id,
+      status: { in: ["HELD", "CONFIRMED"] },
+    },
+    _sum: { seats: true },
+  });
+
+  const seatsTaken = taken._sum.seats ?? 0;
+
+  res.status(200).json({ ...event, seatsLeft: event.seatLimit - seatsTaken });
+});
