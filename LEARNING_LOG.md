@@ -353,3 +353,16 @@ organiser   User   @relation(fields: [organiserId], references: [id])
 - Don't hard-code IDs in tests; get them from the list first, because IDs change on every reseed.
 - "Worker failed to exit gracefully" = something left open (the database connection). Fixed with `afterAll(() => prisma.$disconnect())`: teardown.
 - PORT must come from process.env.PORT, or Render can't reach the app.
+## 6 Nov 2026 — Deploying the API
+ 
+### Deploying to Render
+- Render clones `main`, runs the build command (install → prisma generate → migrate deploy → tsc), then `npm start`.
+- Render sets PORT itself (10000 in the log). My app must read `process.env.PORT`.
+- Free plan sleeps when idle, so the first request takes ~50 s.
+- "Render builds from main, applies any new migrations, then starts the app on the port Render gives it."
+### One database, two places (gap)
+- The seed writes to whatever database `DATABASE_URL` points to. It doesn't know if that's "local" or "production".
+- My laptop's `.env` and Render both point to the same Neon database. So seeding locally resets the live data.
+- "The database doesn't belong to an environment. Whoever has the connection string can change it."
+
+ 

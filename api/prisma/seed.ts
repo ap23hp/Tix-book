@@ -9,10 +9,11 @@ const prisma = new PrismaClient({ adapter });
 
 faker.seed(42); // same fake data every run
 
-// A date X days from now, at a given hour (UTC)
-function daysFromNow(days: number, hour: number, minute = 0) {
-  const date = new Date();
-  date.setUTCDate(date.getUTCDate() + days);
+// A fixed date at a given hour (UTC).
+// All dates are before 28 Mar 2027 (UK clocks change), so UTC = London time.
+// ⚠️ These dates will pass eventually — update them before mid-March 2027.
+function at(isoDate: string, hour: number, minute = 0) {
+  const date = new Date(`${isoDate}T00:00:00Z`);
   date.setUTCHours(hour, minute, 0, 0);
   return date;
 }
@@ -49,7 +50,7 @@ async function main() {
   });
 
   // 3. Events
-  const comedyStart = daysFromNow(3, 20);
+  const comedyStart = at("2027-01-08", 20);
   const comedy = await prisma.event.create({
     data: {
       title: "Friday Night Comedy",
@@ -69,7 +70,7 @@ async function main() {
     },
   });
 
-  const webinarStart = daysFromNow(7, 13);
+  const webinarStart = at("2027-01-19", 13);
   const webinar = await prisma.event.create({
     data: {
       title: "Small Business Marketing Webinar",
@@ -87,7 +88,7 @@ async function main() {
     },
   });
 
-  const jazzStart = daysFromNow(9, 20);
+  const jazzStart = at("2027-01-30", 20);
   const jazz = await prisma.event.create({
     data: {
       title: "Live Jazz Night",
@@ -107,7 +108,7 @@ async function main() {
     },
   });
 
-  const jsStart = daysFromNow(15, 19);
+  const jsStart = at("2027-02-16", 19);
   await prisma.event.create({
     data: {
       title: "JavaScript Basics for Beginners",
@@ -125,7 +126,7 @@ async function main() {
     },
   });
 
-  const potteryStart = daysFromNow(18, 10);
+  const potteryStart = at("2027-03-13", 10);
   await prisma.event.create({
     data: {
       title: "Beginner Pottery Workshop",
@@ -142,7 +143,7 @@ async function main() {
     },
   });
 
-  const pitchStart = daysFromNow(12, 18);
+  const pitchStart = at("2027-02-24", 18);
   await prisma.event.create({
     data: {
       title: "Startup Pitch Night",

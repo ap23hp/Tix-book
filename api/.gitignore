@@ -2,6 +2,7 @@ node_modules
 # Keep environment variables out of version control
 .env
 
+.env.test
 /src/generated/prisma
 # AI agent skill files created by prisma init (kept locally, not committed)
 .claude/
