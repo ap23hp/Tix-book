@@ -35,7 +35,7 @@ const fakeEvents: EventSummary[] = [
 
 export default function Home() {
   return (
-    <main className="mx-auto max-w-[1200px] p-6">
+    <main className="mx-auto max-w-300 p-6">
       <h1 className="font-display text-display-lg font-extrabold [font-variation-settings:'wdth'_75] tracking-tight text-ink">
         Upcoming events
       </h1>

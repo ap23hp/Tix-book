@@ -70,9 +70,9 @@ export function EventCard({ event }: { event: EventSummary }) {
   return (
     <Link
       href={`/events/${event.id}`}
-      className="flex flex-col rounded-ticket bg-surface shadow-ticket transition duration-160 ease-ticket hover:-translate-y-1 hover:shadow-ticket-lift focus-visible:-translate-y-1 focus-visible:shadow-ticket-lift motion-reduce:transition-none motion-reduce:hover:translate-y-0"
+      className="ticket flex flex-col rounded-ticket transition duration-160 ease-ticket hover:-translate-y-1 focus-visible:-translate-y-1 motion-reduce:transition-none motion-reduce:hover:translate-y-0"
     >
-      <article className="flex flex-1 flex-col">
+      <article className="ticket-notched flex flex-1 flex-col rounded-ticket bg-surface">
         {/* Cover art */}
         <div
           className="relative h-36 rounded-t-ticket"
@@ -123,8 +123,8 @@ export function EventCard({ event }: { event: EventSummary }) {
           className="mx-5 mt-auto border-t-2 border-dashed border-perf"
         />
 
-        {/* Stub: date and price */}
-        <div className="flex items-end justify-between px-5 pb-4 pt-3">
+        {/* Stub: fixed 80px height so the notches line up with the perforation */}
+        <div className="flex h-20 items-center justify-between px-5">
           <time dateTime={event.startsAt} className="flex items-center gap-2">
             <span className={`text-display-lg text-ink ${display}`}>{day}</span>
             <span className={`flex flex-col text-ink-muted ${label}`}>

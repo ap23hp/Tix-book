@@ -82,3 +82,26 @@
     outline-offset: 4px;
   }
 }
+
+@layer components {
+  /* Outer element: shadow that follows the notched shape */
+  .ticket {
+    filter: drop-shadow(0 1px 1px rgb(23 20 15 / 0.06))
+      drop-shadow(0 8px 18px rgb(23 20 15 / 0.07));
+  }
+
+  .ticket:hover,
+  .ticket:focus-visible {
+    filter: drop-shadow(0 2px 2px rgb(23 20 15 / 0.08))
+      drop-shadow(0 18px 30px rgb(23 20 15 / 0.16));
+  }
+
+  /* Inner element: cut a half-circle out of each side at the perforation */
+  .ticket-notched {
+    --notch-y: calc(100% - 81px);
+    mask-image:
+      radial-gradient(circle 11px at 0 var(--notch-y), transparent 10.5px, #000 11px),
+      radial-gradient(circle 11px at 100% var(--notch-y), transparent 10.5px, #000 11px);
+    mask-composite: intersect;
+  }
+}
