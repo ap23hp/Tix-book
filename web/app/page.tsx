@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import { connection } from "next/server";
-import { EventCard, type EventSummary } from "@/components/EventCard";
+import { EventCard } from "@/components/EventCard";
+import type { EventSummary } from "@/lib/types";
 import { getEvents } from "@/lib/api";
 
 const display =
