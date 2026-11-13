@@ -353,3 +353,91 @@ organiser   User   @relation(fields: [organiserId], references: [id])
 - Don't hard-code IDs in tests; get them from the list first, because IDs change on every reseed.
 - "Worker failed to exit gracefully" = something left open (the database connection). Fixed with `afterAll(() => prisma.$disconnect())`: teardown.
 - PORT must come from process.env.PORT, or Render can't reach the app.
+## 6 Nov 2026 — Deploying the API
+ 
+### Deploying to Render
+- Render clones `main`, runs the build command (install → prisma generate → migrate deploy → tsc), then `npm start`.
+- Render sets PORT itself (10000 in the log). My app must read `process.env.PORT`.
+- Free plan sleeps when idle, so the first request takes ~50 s.
+- "Render builds from main, applies any new migrations, then starts the app on the port Render gives it."
+### One database, two places (gap)
+- The seed writes to whatever database `DATABASE_URL` points to. It doesn't know if that's "local" or "production".
+- My laptop's `.env` and Render both point to the same Neon database. So seeding locally resets the live data.
+- "The database doesn't belong to an environment. Whoever has the connection string can change it."
+
+ ## Concurrency and booking: (11 Nov 2026)
+
+**Concurrency:** many requests running at the same time.
+
+**Race condition:** two requests run at once and both act on old information, so the result
+depends on timing. Tixbook: two people both see "1 place left" and both book it.
+
+**Contention:** how many requests fight over the same data. High contention = many requests
+on one row (Tixbook: 100 people, one event row). Low contention = clashes are rare.
+
+**Transaction:** a group of database steps that all succeed or all get undone.
+- **Commit:** save all the steps.
+- **Rollback:** undo all the steps.
+- **Atomic:** all or nothing.
+
+**Lock:** a database feature that makes other requests wait until the current one finishes.
+**Row-level lock:** locks one row, not the whole table. Tixbook locks the event row.
+**SELECT ... FOR UPDATE:** the Postgres SQL that locks the rows it reads until the
+transaction ends.
+
+**Pessimistic locking:** lock first, then work. Assumes a clash will happen. Others wait.
+Safe and clear, but people queue, and it can cause deadlocks.
+
+**Optimistic locking:** no lock. Work freely, then check at save time that nobody else changed
+the data. Uses a version number. If the version changed, the save fails and you retry.
+Fast when clashes are rare, wasteful when many people fight over the same row.
+
+**Version column:** a number on a row that goes up on every update. Optimistic locking saves
+"only if the version is still N".
+
+**Deadlock:** two transactions each hold a lock the other needs, so both wait forever.
+Postgres cancels one. Avoid it by locking in a consistent order and keeping transactions short.
+
+**Seat hold:** a Booking row with status HELD and an expiresAt time. It reserves one place
+while the user pays. It's data, not a lock.
+
+**TTL (time to live) / expiry:** how long something stays valid. Tixbook hold = 5 minutes.
+
+**Cron job:** code that runs on a schedule. Tixbook: marks expired HELD bookings as EXPIRED.
+
+**409 Conflict:** the HTTP status for "your request clashes with the current state",
+e.g. sold out.
+
+### Tixbook's approach
+Pessimistic lock on the event row for milliseconds, to count places and create a HELD row.
+Then release the lock. The user pays within 5 minutes with no lock held.
+Paid → CONFIRMED. Not paid → cron marks it EXPIRED and the place is free again.
+
+### Why not optimistic?
+Everyone fights over the same event row (high contention), so most optimistic saves would
+fail and retry. Optimistic suits rare clashes or separate rows (e.g. assigned seats A5 vs B7).
+Plan: build both in phase 4 and measure.
+## Deadlocks: how Tixbook avoids them (11 Nov 2026)
+
+**Deadlock:** two requests each hold a lock and wait for the other's lock.
+Neither can move. It's a circle of waiting.
+
+**Example:**
+- Asha locks event e1, then wants e2
+- Rahul locks event e2, then wants e1
+- Asha waits for Rahul, Rahul waits for Asha → stuck forever
+
+### How Tixbook avoids it
+1. **One lock per booking.** Each booking locks only one event row. With one lock,
+   people wait in a line, and a line can't become a circle.
+2. **Short lock.** Inside the lock we only count places and insert the HELD row.
+   No Stripe call, no email, no waiting for the user.
+3. **Same order.** If we ever lock more than one row (e.g. a cart), always lock in the
+   same order (sorted by id). Then nobody can hold e2 while waiting for e1.
+4. **Safety net.** Postgres detects deadlocks and cancels one request with an error.
+   A lock timeout (lock_timeout) stops a request waiting too long. Check the Postgres
+   docs when building.
+
+### Honest note
+This makes deadlocks very unlikely, not impossible. Phase 4: cause one on purpose
+and watch what Postgres does.
