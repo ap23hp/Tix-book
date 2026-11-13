@@ -17,7 +17,9 @@ export default function EventPage({ params }: PageProps<"/events/[id]">) {
       <Link href="/" className={`text-ink-muted hover:text-ink ${label}`}>
         <span aria-hidden="true">← </span>All events
       </Link>
-      <Suspense fallback={<EventDetailSkeleton />}></Suspense>
+          <Suspense fallback={<EventDetailSkeleton />}>
+        <EventDetails params={params} />
+      </Suspense>
     </div>
   );
 }
