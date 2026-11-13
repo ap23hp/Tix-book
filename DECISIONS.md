@@ -134,3 +134,77 @@ Date: 5 Nov 2026
 - The pg package warned that `require` will become weaker in a future version; being explicit keeps it strict
 **Trade-off:** If the certificate can't be verified (e.g. an unusual network setup), the connection fails instead of falling back to a weaker mode. That's the safe behaviour.
 **Revisit if:** A hosting platform needs a different SSL setting.
+## 013 — API hosting: Render free plan, database on Neon
+Date: 6 Nov 2026
+ 
+**Options considered:** Render (long-running server), Vercel Functions (serverless), Fly.io, Railway, Koyeb
+**Decision:** Express API on Render's free web service; PostgreSQL on Neon's free plan
+**Why:**
+- A long-running server suits the work coming in later phases: releasing expired seat holds, scheduled reminders, job queues
+- Fly.io, Railway and Koyeb have no free compute for new accounts
+- Neon's free plan is permanent (Render's free Postgres expires)
+**Trade-off:** Render's free service sleeps after 15 minutes without traffic and takes about a minute to wake. The frontend handles this with a timeout and a "server may be waking up" Retry screen (decision 017).
+**Revisit if:** Real users arrive and the cold start hurts them; a small paid plan removes it.
+## 014 — POST /api/v1/events stays open until auth
+Date: 6 Nov 2026
+ 
+**Options considered:** Add a temporary restriction now (API key, disable the route) vs leave it open until phase 2
+**Decision:** Leave it open. `organiserId` in the request body is a temporary stand-in for the logged-in user.
+**Why:**
+- Phase 2 replaces this with real authentication and roles; a temporary lock would be thrown away
+- Zod validation and the organiser-role check still reject bad input
+**Trade-off:** Anyone who finds the API URL can create events (hiding the URL is not protection). Accepted because there are no real users yet.
+**Revisit if:** The app is shared with real users before phase 2 is done.
+## 015 — Frontend fetches data in Server Components
+Date: 13 Nov 2026
+ 
+**Options considered:** Server Components fetching on the server vs Client Components fetching in the browser (useEffect, or a library like TanStack Query)
+**Decision:** Pages are Server Components that call the API on the server through a typed `fetchJson<T>()` helper. Only interactive parts will be Client Components.
+**Why:**
+- The API URL lives in a server-only environment variable (`API_URL`, no `NEXT_PUBLIC_` prefix), so the browser never calls Render directly and no CORS setup is needed
+- Less JavaScript is sent to the browser; no loading flicker from useEffect
+- One generic helper gives typed results everywhere
+**Trade-off:** The response type is trusted (`as Promise<T>`), not checked at runtime. Every page view goes through the Next.js server.
+**Revisit if:** The API response shape changes often; then validate responses with Zod.
+## 016 — Keep Cache Components and Partial Prefetching (Next.js 16.4 defaults)
+Date: 13 Nov 2026
+ 
+**Options considered:** Keep the defaults `create-next-app` added vs turn them off
+**Decision:** Keep `cacheComponents: true` and `partialPrefetching: true`
+**Why:**
+- Pages are partially prerendered: a static shell (header, title, skeletons) is sent instantly and event data streams in inside `<Suspense>`
+- Partial Prefetching prefetches one reusable shell per route before a link is clicked
+- Next.js plans to make these the default in the next major version
+**Trade-off:** Stricter rules: uncached data must be inside `<Suspense>`, and the current time needs `await connection()` first (used for the "in X days" label).
+**Revisit if:** These rules block a feature I need.
+## 017 — 10-second fetch timeout and a Retry screen for the cold start
+Date: 13 Nov 2026
+ 
+**Options considered:** No timeout (wait for Render to wake) vs a short timeout plus an error page with Retry
+**Decision:** `AbortSignal.timeout(10_000)` on every API call. On failure, `error.tsx` shows "The server may be waking up" with a Retry button that calls `retry()`.
+**Why:**
+- Without a timeout, a visitor could stare at a loading skeleton for a minute with no explanation
+- The first request still wakes Render, so Retry usually works a few seconds later
+- `retry()` re-fetches Server Component data; `reset()` would only re-render the same error (checked in the Next.js 16.4.4 docs)
+**Trade-off:** A slow but working API (over 10 seconds) is treated as an error.
+**Revisit if:** The API moves off a sleeping free plan.
+## 018 — Frontend hosting: Vercel
+Date: 13 Nov 2026
+ 
+**Options considered:** Vercel, Netlify, Render (a second service)
+**Decision:** Vercel Hobby, with the project's Root Directory set to `web`
+**Why:**
+- Built by the Next.js team, so Next.js features work without extra setup
+- Every pushed branch gets its own Preview deployment; `main` deploys to Production
+- Render's free plan allows only one free service, already used by the API
+**Trade-off:** The Hobby plan is for personal, non-commercial use. Preview deployments need a Vercel login to view.
+**Revisit if:** The project becomes commercial.
+## 019 — One shared database for development and production (temporary)
+Date: 13 Nov 2026
+ 
+**Options considered:** Keep one Neon database vs separate dev and production now (Neon branch or second project)
+**Decision:** Keep one database for now. Separating them is the next ticket after this one.
+**Why:** No real users yet, and the frontend work didn't need schema changes.
+**Trade-off:** Running the seed or `migrate dev` locally changes live data. On 6 Nov a seed crash emptied the live database.
+**Revisit if:** Before phase 2 (auth) at the latest, because real accounts would be wiped by a seed.
+ 
