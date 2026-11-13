@@ -95,7 +95,16 @@
     filter: drop-shadow(0 2px 2px rgb(23 20 15 / 0.08))
       drop-shadow(0 18px 30px rgb(23 20 15 / 0.16));
   }
-
+  /* Skeleton shimmer background (the motion comes from animate-shimmer) */
+  .shimmer {
+    background-image: linear-gradient(
+      90deg,
+      var(--color-skeleton) 25%,
+      var(--color-line) 50%,
+      var(--color-skeleton) 75%
+    );
+    background-size: 200% 100%;
+  }
   /* Inner element: cut a half-circle out of each side at the perforation */
   .ticket-notched {
     --notch-y: calc(100% - 81px);

@@ -1,26 +1,23 @@
 import { Suspense } from "react";
 import { connection } from "next/server";
 import { EventCard } from "@/components/EventCard";
-import type { EventSummary } from "@/lib/types";
+import { EventListSkeleton } from "@/components/Skeletons";
+import { EmptyTicket } from "@/components/Illustrations";
 import { getEvents } from "@/lib/api";
-
-const display =
-  "font-display font-semibold [font-variation-settings:'wdth'_75] tracking-tight";
-const label = "font-mono text-label font-medium uppercase tracking-[0.08em]";
+import { display, label } from "@/lib/ui";
+import type { EventSummary } from "@/lib/types";
 
 export default function Home() {
   return (
-    <main className="mx-auto w-full max-w-300 px-6 py-10">
+    <div className="mx-auto w-full max-w-300 px-6 py-10">
       {/* Static: part of the prerendered shell */}
       <h1 className={`text-display-lg text-ink ${display}`}>Upcoming events</h1>
 
-      {/* Live: fetched per request */}
-      <Suspense
-        fallback={<p className="mt-8 text-ink-muted">Loading events…</p>}
-      >
+      {/* Live: fetched per request, skeleton shown while waiting */}
+      <Suspense fallback={<EventListSkeleton />}>
         <EventList />
       </Suspense>
-    </main>
+    </div>
   );
 }
 
@@ -30,7 +27,16 @@ async function EventList() {
   const now = new Date();
 
   if (events.length === 0) {
-    return <p className="mt-8 text-ink-muted">No upcoming events.</p>;
+    return (
+      <div className="mt-12 flex flex-col items-center text-center">
+        <EmptyTicket />
+        <h2 className={`mt-6 text-display-md text-ink ${display}`}>No upcoming events</h2>
+        <p className="mt-2 max-w-sm text-ink-soft">
+          Nothing on the calendar right now. New events will show up here as soon as
+          they&apos;re added.
+        </p>
+      </div>
+    );
   }
 
   return (
@@ -40,8 +46,7 @@ async function EventList() {
           <div className="flex items-end justify-between border-b-2 border-ink pb-2">
             <h2 className={`text-display-sm text-ink ${display}`}>{month}</h2>
             <p className={`text-ink-muted ${label}`}>
-              {monthEvents.length}{" "}
-              {monthEvents.length === 1 ? "event" : "events"}
+              {monthEvents.length} {monthEvents.length === 1 ? "event" : "events"}
             </p>
           </div>
 

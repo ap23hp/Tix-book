@@ -3,20 +3,22 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { CoverArt } from "@/components/CoverArt";
 import { getEvent } from "@/lib/api";
-import { formatDateParts, formatInZone, formatPrice, formatTimeRange } from "@/lib/format";
+import {
+  formatDateParts,
+  formatInZone,
+  formatPrice,
+  formatTimeRange,
+} from "@/lib/format";
 import { display, label } from "@/lib/ui";
-
+import { EventDetailSkeleton } from "@/components/Skeletons";
 export default function EventPage({ params }: PageProps<"/events/[id]">) {
   return (
-    <main className="mx-auto w-full max-w-300 px-6 py-8">
+    <div className="mx-auto w-full max-w-300 px-6 py-8">
       <Link href="/" className={`text-ink-muted hover:text-ink ${label}`}>
         <span aria-hidden="true">← </span>All events
       </Link>
-
-      <Suspense fallback={<p className="mt-8 text-ink-muted">Loading event…</p>}>
-        <EventDetails params={params} />
-      </Suspense>
-    </main>
+      <Suspense fallback={<EventDetailSkeleton />}></Suspense>
+    </div>
   );
 }
 
@@ -30,10 +32,17 @@ async function EventDetails({ params }: { params: Promise<{ id: string }> }) {
   const soldOut = event.seatsLeft <= 0;
 
   // Seats bar shows seats TAKEN (design note). Clamp to 0–100%.
-  const taken = Math.min(Math.max(event.seatLimit - event.seatsLeft, 0), event.seatLimit);
-  const takenPercent = event.seatLimit > 0 ? (taken / event.seatLimit) * 100 : 100;
+  const taken = Math.min(
+    Math.max(event.seatLimit - event.seatsLeft, 0),
+    event.seatLimit,
+  );
+  const takenPercent =
+    event.seatLimit > 0 ? (taken / event.seatLimit) * 100 : 100;
 
-  const { day, month, weekday, year, time } = formatDateParts(event.startsAt, event.timezone);
+  const { day, month, weekday, year, time } = formatDateParts(
+    event.startsAt,
+    event.timezone,
+  );
   const longDate = formatInZone(event.startsAt, event.timezone, {
     weekday: "long",
     day: "numeric",
@@ -52,7 +61,11 @@ async function EventDetails({ params }: { params: Promise<{ id: string }> }) {
       <div className="mt-8 grid gap-10 lg:grid-cols-[1fr_320px] lg:items-start">
         {/* Left: details */}
         <div>
-          <h1 className={`text-display-md text-ink lg:text-display-xl ${display}`}>{event.title}</h1>
+          <h1
+            className={`text-display-md text-ink lg:text-display-xl ${display}`}
+          >
+            {event.title}
+          </h1>
 
           <dl className="mt-6 grid border-t-2 border-ink sm:grid-cols-2 sm:gap-x-6">
             <Detail term="Date">{longDate}</Detail>
@@ -64,9 +77,13 @@ async function EventDetails({ params }: { params: Promise<{ id: string }> }) {
               <Detail term="Format">Online — link sent after booking</Detail>
             ) : (
               <Detail term="Venue">
-                <span className="font-semibold">{event.venueName ?? "Venue to be announced"}</span>
+                <span className="font-semibold">
+                  {event.venueName ?? "Venue to be announced"}
+                </span>
                 {event.venueAddress && (
-                  <span className="block text-ink-muted">{event.venueAddress}</span>
+                  <span className="block text-ink-muted">
+                    {event.venueAddress}
+                  </span>
                 )}
               </Detail>
             )}
@@ -83,11 +100,16 @@ async function EventDetails({ params }: { params: Promise<{ id: string }> }) {
           </dl>
 
           <h2 className={`mt-10 text-display-sm text-ink ${display}`}>About</h2>
-          <p className="mt-3 max-w-prose whitespace-pre-line text-ink-soft">{event.description}</p>
+          <p className="mt-3 max-w-prose whitespace-pre-line text-ink-soft">
+            {event.description}
+          </p>
         </div>
 
         {/* Right: booking ticket */}
-        <aside aria-label="Tickets" className="ticket rounded-ticket lg:sticky lg:top-8">
+        <aside
+          aria-label="Tickets"
+          className="ticket rounded-ticket lg:sticky lg:top-8"
+        >
           <div className="ticket-notched flex flex-col rounded-ticket bg-surface">
             <div className="p-5">
               <p className={`text-ink-muted ${label}`}>Admit one</p>
@@ -103,10 +125,15 @@ async function EventDetails({ params }: { params: Promise<{ id: string }> }) {
               <div className="mt-4 flex items-baseline justify-between">
                 <span className={`text-ink-muted ${label}`}>Seats</span>
                 <span className="text-sm font-semibold text-ink">
-                  {soldOut ? "Sold out" : `${event.seatsLeft} of ${event.seatLimit} left`}
+                  {soldOut
+                    ? "Sold out"
+                    : `${event.seatsLeft} of ${event.seatLimit} left`}
                 </span>
               </div>
-              <div aria-hidden="true" className="mt-2 h-1.5 overflow-hidden rounded-full bg-line">
+              <div
+                aria-hidden="true"
+                className="mt-2 h-1.5 overflow-hidden rounded-full bg-line"
+              >
                 <div
                   className="h-full origin-left animate-fill rounded-full bg-accent motion-reduce:animate-none"
                   style={{ width: `${takenPercent}%` }}
@@ -122,10 +149,15 @@ async function EventDetails({ params }: { params: Promise<{ id: string }> }) {
               </button>
             </div>
 
-            <div aria-hidden="true" className="mx-5 border-t-2 border-dashed border-perf" />
+            <div
+              aria-hidden="true"
+              className="mx-5 border-t-2 border-dashed border-perf"
+            />
 
             <div className="flex h-20 items-center gap-3 px-5">
-              <span className={`text-display-lg text-ink ${display}`}>{day}</span>
+              <span className={`text-display-lg text-ink ${display}`}>
+                {day}
+              </span>
               <span className={`flex flex-col text-ink-muted ${label}`}>
                 <span>
                   {month} {year}
