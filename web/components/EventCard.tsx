@@ -59,7 +59,13 @@ const display =
   "font-display font-semibold [font-variation-settings:'wdth'_75] tracking-tight";
 const label = "font-mono text-label font-medium uppercase tracking-[0.08em]";
 
-export function EventCard({ event }: { event: EventSummary }) {
+export function EventCard({
+  event,
+  daysUntil,
+}: {
+  event: EventSummary;
+  daysUntil: number;
+}) {
   const style = getCategoryStyle(event.category);
   const { day, month, weekday, time } = formatDateParts(
     event.startsAt,
@@ -85,7 +91,7 @@ export function EventCard({ event }: { event: EventSummary }) {
           >
             <span
               aria-hidden="true"
-              className="size-2 rounded-[2px]"
+              className="size-2 rounded-xs"
               style={{ backgroundColor: style.dot }}
             />
             {event.category}
@@ -132,9 +138,14 @@ export function EventCard({ event }: { event: EventSummary }) {
               <span>{weekday}</span>
             </span>
           </time>
-          <p className={`text-display-sm text-ink ${display}`}>
-            {formatPrice(event.pricePence)}
-          </p>
+               <div className="text-right">
+            <p className={`text-display-sm text-ink ${display}`}>
+              {formatPrice(event.pricePence)}
+            </p>
+            <p className={`mt-1 text-ink-muted ${label}`}>
+              {daysUntil <= 0 ? "Today" : daysUntil === 1 ? "Tomorrow" : `In ${daysUntil} days`}
+            </p>
+          </div>
         </div>
       </article>
     </Link>
