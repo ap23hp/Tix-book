@@ -453,3 +453,19 @@ and watch what Postgres does.
 - How to check which database I'm on: `npx prisma migrate status --config prisma7.config.ts`
   prints the host; match it in Neon → Branches → Computes.
 - Env files are only read at startup: restart the API after changing `.env`.
+## Safe seed: transaction + guard (14 Nov 2026)
+
+- Wrapped the whole seed in `prisma.$transaction(async (tx) => { ... })`.
+  Inside, every query uses `tx`, not `prisma`.
+- If anything throws inside, every step is rolled back. Tested by throwing an error
+  right after the deletes: the old data was still there.
+- Transaction options: `maxWait` = how long to wait to START (default 2s),
+  `timeout` = how long it may RUN (default 5s). Raised both for the seed
+  (Neon may be waking up; ~15 queries over the network).
+- Guard: the seed refuses to run unless the DATABASE_URL host equals SEED_ALLOWED_HOST.
+  Tested with a wrong value: it refused before touching anything.
+- Replaced faker Latin with real descriptions; `\n\n` shows as a new paragraph
+  because the detail page uses `whitespace-pre-line`.
+
+**What I learned:** a transaction makes the seed all-or-nothing, but it doesn't make it safe
+to run on production. That's why the guard exists too.

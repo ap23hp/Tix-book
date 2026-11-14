@@ -213,3 +213,19 @@ Date: 13 Nov 2026 (decided), 14 Nov 2026 (done)
 **Trade-off:** Both branches share the project's monthly compute allowance. Dev data drifts from
 production over time.
 **Revisit if:** I need a separate test database for automated tests (next: a Neon test branch).
+
+## 020 — Seed safety: one transaction + an allowed-host guard
+Date: 14 Nov 2026
+
+**Options considered:** No protection; a "are you sure?" prompt; a NODE_ENV check;
+an allowed-host check
+**Decision:** The seed runs inside one interactive transaction, and refuses to start unless
+the DATABASE_URL host equals SEED_ALLOWED_HOST (set to the Neon dev host in api/.env).
+**Why:**
+- On 6 Nov the seed crashed halfway and left the database empty; a transaction rolls back
+  every step on failure
+- A prompt can be clicked through, and NODE_ENV isn't set reliably on every machine;
+  comparing the actual host checks the thing that matters: which database is about to be wiped
+**Trade-off:** One more env var to set up on a new machine. Longer transaction limits
+(maxWait 10s, timeout 20s) are fine for a one-off dev script, not for app code.
+**Revisit if:** A test database needs seeding too; then allow a list of hosts.
