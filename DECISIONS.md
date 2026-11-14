@@ -199,12 +199,17 @@ Date: 13 Nov 2026
 - Render's free plan allows only one free service, already used by the API
 **Trade-off:** The Hobby plan is for personal, non-commercial use. Preview deployments need a Vercel login to view.
 **Revisit if:** The project becomes commercial.
-## 019 — One shared database for development and production (temporary)
-Date: 13 Nov 2026
- 
-**Options considered:** Keep one Neon database vs separate dev and production now (Neon branch or second project)
-**Decision:** Keep one database for now. Separating them is the next ticket after this one.
-**Why:** No real users yet, and the frontend work didn't need schema changes.
-**Trade-off:** Running the seed or `migrate dev` locally changes live data. On 6 Nov a seed crash emptied the live database.
-**Revisit if:** Before phase 2 (auth) at the latest, because real accounts would be wiped by a seed.
- 
+## 019 — Separate databases for development and production (Neon branches)
+Date: 13 Nov 2026 (decided), 14 Nov 2026 (done)
+
+**Options considered:** One shared database vs a Neon branch for dev vs a second Neon project
+**Decision:** A Neon branch called `dev`, copied from the `production` branch. Render uses
+`production`; my laptop's `api/.env` uses `dev`. Auto-delete is off for `dev`.
+**Why:**
+- Running the seed or `migrate dev` locally could change or wipe live data (it happened on 6 Nov)
+- A branch starts as an exact copy of production (schema and data), so dev looks like the real thing
+- Free plan allows 10 branches per project; a branch has its own connection string and compute
+- `dev` can be reset from its parent if it gets messy
+**Trade-off:** Both branches share the project's monthly compute allowance. Dev data drifts from
+production over time.
+**Revisit if:** I need a separate test database for automated tests (next: a Neon test branch).

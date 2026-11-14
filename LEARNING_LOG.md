@@ -441,3 +441,15 @@ Neither can move. It's a circle of waiting.
 ### Honest note
 This makes deadlocks very unlikely, not impossible. Phase 4: cause one on purpose
 and watch what Postgres does.
+
+## Separate dev and production databases (14 Nov 2026)
+
+- Before: my laptop and Render used the same database, so local experiments hit the live site.
+- Now: Neon branch `production` = live (Render), Neon branch `dev` = my laptop.
+- A Neon branch = a copy of the database at that moment, with its own connection string
+  and its own host (`ep-...`).
+- How I proved it: changed an event title in dev with Prisma Studio. The local API showed the
+  change, the live API didn't.
+- How to check which database I'm on: `npx prisma migrate status --config prisma7.config.ts`
+  prints the host; match it in Neon → Branches → Computes.
+- Env files are only read at startup: restart the API after changing `.env`.
