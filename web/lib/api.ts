@@ -40,7 +40,9 @@ export function getEvents() {
 // Returns null when the event doesn't exist, so the page can show "not found"
 export async function getEvent(id: string): Promise<EventDetail | null> {
   try {
-    return await fetchJson<EventDetail>(`/api/v1/events/${encodeURIComponent(id)}`);
+    return await fetchJson<EventDetail>(
+      `/api/v1/events/${encodeURIComponent(id)}`,
+    );
   } catch (error) {
     if (error instanceof ApiError && error.status === 404) return null;
     throw error;
