@@ -469,3 +469,11 @@ and watch what Postgres does.
 
 **What I learned:** a transaction makes the seed all-or-nothing, but it doesn't make it safe
 to run on production. That's why the guard exists too.
+##  SQL on production (14 Nov 2026)
+
+- Used Neon's SQL Editor on the `production` branch to fix 6 descriptions once,
+  without putting production's secret on my laptop.
+- SELECT first to check which database I'm on, then UPDATE ... WHERE, then SELECT again.
+- `"Event"` needs double quotes (capital letter); `$$ ... $$` = text with apostrophes and line breaks.
+- An UPDATE without WHERE changes every row.
+- BEGIN ... COMMIT = the same all-or-nothing transaction idea as the seed.

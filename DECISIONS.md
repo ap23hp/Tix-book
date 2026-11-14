@@ -229,3 +229,27 @@ the DATABASE_URL host equals SEED_ALLOWED_HOST (set to the Neon dev host in api/
 **Trade-off:** One more env var to set up on a new machine. Longer transaction limits
 (maxWait 10s, timeout 20s) are fine for a one-off dev script, not for app code.
 **Revisit if:** A test database needs seeding too; then allow a list of hosts.
+## 021 — Frontend testing: Jest + React Testing Library; async pages tested end-to-end
+Date: 14 Nov 2026
+
+**Options considered:** Jest vs Vitest for the frontend; unit-testing the pages vs end-to-end
+**Decision:** Jest + React Testing Library in `web/` (same runner as the API, decision 003).
+Unit tests for `lib/format.ts`, component tests for `EventCard`. The async pages
+(`app/page.tsx`, `app/events/[id]/page.tsx`) will be tested end-to-end with Playwright in phase 3.
+**Why:**
+- The Next.js docs (16.4.4) say Jest doesn't support async Server Components and recommend
+  end-to-end tests for them; sync components and helpers can be unit tested
+- `next/jest` configures the compiler, CSS and `next/font` mocks automatically
+**Trade-off:** Until phase 3, the pages' data loading isn't covered by automated tests.
+**Revisit if:** Jest gains support for async Server Components.
+
+## 022 — Phase 1 scope changes: create-event form → phase 2, Lighthouse → phase 7
+Date: 14 Nov 2026
+
+**Decision:** The create-event form moves to phase 2; the first Lighthouse run moves to phase 7.
+**Why:**
+- `POST /api/v1/events` has no login yet (decision 014). A public form on the live site would let
+  anyone create events with one click. It belongs behind organiser login.
+- Lighthouse measures performance, which is phase 7's focus; measuring then gives before/after numbers.
+**Trade-off:** Phase 1 ships without a way to create events from the UI (seed and API only).
+**Revisit if:** Never needed; both are scheduled.
