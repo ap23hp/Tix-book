@@ -75,7 +75,9 @@ npm install
 npm run dev
 ```
 
-Run the API tests with `npm test` inside `api/`.
+Run the tests with `npm test` inside `api/` (API tests: Jest + Supertest) and inside `web/`
+(unit and component tests: Jest + React Testing Library). `npm run lint` in `web/` includes
+the full jsx-a11y accessibility rules.
 
 ## Roadmap
 

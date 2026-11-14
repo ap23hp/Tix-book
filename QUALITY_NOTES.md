@@ -51,3 +51,10 @@ Testing approach, accessibility checks, known issues and things to review.
 -  Since the 6 Nov deploy, POST /events is open on the public internet. Every event in GET /events includes `organiserId`, so anyone can copy a valid one and create a PUBLISHED event on the live demo. Decision pending: accept until phase 2, or limit POST in production.
 - `organiserId` is returned in public responses. Review what public endpoints should expose (privacy).
 - Cover image is not yet required to publish (decision 007), because there's no image upload yet. Add the rule when uploads exist
+
+## Frontend testing (14 Nov 2026)
+- Run: `npm test` in `web/` (Jest + React Testing Library, jsdom).
+- Covered: price formatting (Free, £12, £8.50), time ranges in GMT and BST, category fallback,
+  EventCard (title, venue, link, Online pill, Free, "Tomorrow").
+- Not covered yet: async pages (list and detail) → Playwright end-to-end in phase 3.
+- Accessibility: all 34 jsx-a11y recommended rules on; `npm run lint` passes.
