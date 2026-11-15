@@ -17,7 +17,9 @@ const nextConfig: NextConfig = {
         // Browser calls vercel.app/api/..., Vercel forwards it to Render.
         // The browser only ever talks to vercel.app, so auth cookies stay first-party.
         source: "/api/:path*",
-        destination: "https://tixbook-api.onrender.com/api/:path*",
+        // Locally API_URL is http://localhost:4000, so local log-ins hit your local API,
+        // not production. On Vercel it's the Render URL.
+        destination: `${process.env.API_URL ?? "https://tixbook-api.onrender.com"}/api/:path*`,
       },
     ];
   },
