@@ -30,6 +30,7 @@ model User {
 
   events   Event[]
   bookings Booking[]
+  sessions Session[]
 }
 
 enum EventFormat {
@@ -96,4 +97,14 @@ model Booking {
   event   Event  @relation(fields: [eventId], references: [id])
 }
 
+model Session {
+  // SHA-256 hash of the session token. The real token only lives in the user's cookie.
+  id        String   @id
+  expiresAt DateTime
+  createdAt DateTime @default(now())
 
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
