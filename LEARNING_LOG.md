@@ -513,3 +513,12 @@ to run on production. That's why the guard exists too.
   - Secure: only sent over HTTPS.
   - SameSite=Lax: not sent on most requests from other sites (helps against CSRF).
 - Tests check the cookie flags, and that the database stores the hash, not the token.
+
+## /me and logout (15 Nov)
+- /me reads the session cookie, hashes the token, looks it up in the Session table, and returns the user, or 401.
+- cookie-parser: Express can set cookies on its own but needs this middleware to read them (fills `req.cookies`).
+- Expired session: return 401, delete the row, clear the cookie.
+- Logout: delete the session row, then clear the cookie. The browser only clears it if path and flags match the original.
+- 204 No Content = it worked, nothing to send back.
+- Revocation: after logout, the same cookie gets 401, because the row is gone. A JWT can't do this without extra server state. This is why I chose sessions (DECISIONS 023).
+- Cookie values can be anything, so I check `typeof token === "string"` before using it.
