@@ -1,11 +1,12 @@
 import express from "express";
 import { eventsRouter } from "./routes/events.js";
+import cookieParser from "cookie-parser";
 import { authRouter } from "./routes/auth.js";
 import type { ErrorRequestHandler } from "express";
 const app = express();
 
 app.use(express.json());
-
+app.use(cookieParser());
 app.get("/health", (_req, res) => {
   res.status(200).json({ status: "ok" });
 });

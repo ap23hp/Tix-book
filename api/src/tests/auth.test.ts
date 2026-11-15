@@ -113,3 +113,77 @@ describe("POST /api/v1/auth/login", () => {
     expect(noSuchUser.body).toEqual(wrongPassword.body);
   });
 });
+describe("GET /api/v1/auth/me and POST /api/v1/auth/logout", () => {
+  const email = `auth-test-session-${runId}@example.com`;
+  const password = "correct-horse-3";
+  let userId = "";
+
+  // Logs in and returns just "session=<token>" for the Cookie header
+  async function logIn(): Promise<string> {
+    const response = await request(app)
+      .post("/api/v1/auth/login")
+      .send({ email, password });
+    return response.get("Set-Cookie")?.[0]?.split(";")[0] ?? "";
+  }
+
+  beforeAll(async () => {
+    const response = await request(app)
+      .post("/api/v1/auth/signup")
+      .send({ name: "Session User", email, password });
+    userId = response.body.id;
+  });
+
+  it("returns the user for a valid session", async () => {
+    const cookie = await logIn();
+
+    const response = await request(app)
+      .get("/api/v1/auth/me")
+      .set("Cookie", cookie);
+
+    expect(response.status).toBe(200);
+    expect(response.body.email).toBe(email);
+    expect(response.body).not.toHaveProperty("passwordHash");
+  });
+
+  it("returns 401 with no cookie", async () => {
+    const response = await request(app).get("/api/v1/auth/me");
+    expect(response.status).toBe(401);
+  });
+
+  it("returns 401 for a made-up token", async () => {
+    const response = await request(app)
+      .get("/api/v1/auth/me")
+      .set("Cookie", "session=not-a-real-token");
+    expect(response.status).toBe(401);
+  });
+
+  it("returns 401 for an expired session and deletes it", async () => {
+    const token = `expired-token-${runId}`;
+    const id = createHash("sha256").update(token).digest("hex");
+    await prisma.session.create({
+      data: { id, userId, expiresAt: new Date(Date.now() - 1000) },
+    });
+
+    const response = await request(app)
+      .get("/api/v1/auth/me")
+      .set("Cookie", `session=${token}`);
+
+    expect(response.status).toBe(401);
+    expect(await prisma.session.findUnique({ where: { id } })).toBeNull();
+  });
+
+  it("logout deletes the session, so the old cookie stops working", async () => {
+    const cookie = await logIn();
+
+    const logout = await request(app)
+      .post("/api/v1/auth/logout")
+      .set("Cookie", cookie);
+
+    expect(logout.status).toBe(204);
+    expect(logout.get("Set-Cookie")?.[0]).toContain("Expires=Thu, 01 Jan 1970");
+
+    // Revocation: the same cookie is now useless
+    const me = await request(app).get("/api/v1/auth/me").set("Cookie", cookie);
+    expect(me.status).toBe(401);
+  });
+});

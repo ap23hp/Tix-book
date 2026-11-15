@@ -3,8 +3,11 @@ import { prisma } from "../lib/prisma.js";
 import { hashPassword, verifyPassword } from "../lib/password.js";
 import {
   SESSION_COOKIE,
+  clearSessionCookieOptions,
   createSession,
+  invalidateSession,
   sessionCookieOptions,
+  validateSessionToken,
 } from "../lib/session.js";
 import { loginSchema, signupSchema } from "../schemas/auth.js";
 
@@ -96,7 +99,38 @@ authRouter.post("/login", async (req, res) => {
     role: user.role,
   });
 });
+// GET /api/v1/auth/me → who is logged in?
+authRouter.get("/me", async (req, res) => {
+  const token: unknown = req.cookies?.[SESSION_COOKIE];
 
+  if (typeof token !== "string") {
+    res.status(401).json({ error: "Not logged in" });
+    return;
+  }
+
+  const user = await validateSessionToken(token);
+
+  if (!user) {
+    // Unknown or expired session: remove the useless cookie
+    res.clearCookie(SESSION_COOKIE, clearSessionCookieOptions());
+    res.status(401).json({ error: "Not logged in" });
+    return;
+  }
+
+  res.status(200).json(user);
+});
+
+// POST /api/v1/auth/logout → delete the session and the cookie
+authRouter.post("/logout", async (req, res) => {
+  const token: unknown = req.cookies?.[SESSION_COOKIE];
+
+  if (typeof token === "string") {
+    await invalidateSession(token);
+  }
+
+  res.clearCookie(SESSION_COOKIE, clearSessionCookieOptions());
+  res.status(204).end();
+});
 function isUniqueConstraintError(err: unknown): boolean {
   return (
     typeof err === "object" &&
