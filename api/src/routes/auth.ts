@@ -1,11 +1,16 @@
 import { Router } from "express";
 import { prisma } from "../lib/prisma.js";
-import { hashPassword } from "../lib/password.js";
-import { signupSchema } from "../schemas/auth.js";
+import { hashPassword, verifyPassword } from "../lib/password.js";
+import {
+  SESSION_COOKIE,
+  createSession,
+  sessionCookieOptions,
+} from "../lib/session.js";
+import { loginSchema, signupSchema } from "../schemas/auth.js";
 
 export const authRouter = Router();
 
-// POST /api/v1/auth/signup → create an account (login comes next)
+// POST /api/v1/auth/signup → create an account
 authRouter.post("/signup", async (req, res) => {
   const result = signupSchema.safeParse(req.body);
 
@@ -47,6 +52,49 @@ authRouter.post("/signup", async (req, res) => {
     }
     throw err; // anything else → errorHandler → 500
   }
+});
+
+// Used when the email doesn't exist, so a wrong email takes
+// as long as a wrong password (attackers can't time the difference)
+const dummyHash = hashPassword("not-a-real-password");
+
+// POST /api/v1/auth/login → check password, create session, set cookie
+authRouter.post("/login", async (req, res) => {
+  const result = loginSchema.safeParse(req.body);
+
+  if (!result.success) {
+    res.status(400).json({
+      error: "Invalid login data",
+      details: result.error.issues.map((issue) => ({
+        field: issue.path.join("."),
+        message: issue.message,
+      })),
+    });
+    return;
+  }
+
+  const { email, password } = result.data;
+  const user = await prisma.user.findUnique({ where: { email } });
+
+  // Always run verify, even with no user, so timing looks the same
+  const hash = user?.passwordHash ?? (await dummyHash);
+  const passwordOk = await verifyPassword(hash, password);
+
+  // Same message for wrong email and wrong password
+  if (!user || !user.passwordHash || !passwordOk) {
+    res.status(401).json({ error: "Invalid email or password" });
+    return;
+  }
+
+  const { token, expiresAt } = await createSession(user.id);
+  res.cookie(SESSION_COOKIE, token, sessionCookieOptions(expiresAt));
+
+  res.status(200).json({
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    role: user.role,
+  });
 });
 
 function isUniqueConstraintError(err: unknown): boolean {
