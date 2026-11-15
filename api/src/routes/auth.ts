@@ -7,8 +7,8 @@ import {
   createSession,
   invalidateSession,
   sessionCookieOptions,
-  validateSessionToken,
 } from "../lib/session.js";
+import { getUser, requireAuth } from "../middleware/auth.js";
 import { loginSchema, signupSchema } from "../schemas/auth.js";
 
 export const authRouter = Router();
@@ -100,24 +100,9 @@ authRouter.post("/login", async (req, res) => {
   });
 });
 // GET /api/v1/auth/me → who is logged in?
-authRouter.get("/me", async (req, res) => {
-  const token: unknown = req.cookies?.[SESSION_COOKIE];
-
-  if (typeof token !== "string") {
-    res.status(401).json({ error: "Not logged in" });
-    return;
-  }
-
-  const user = await validateSessionToken(token);
-
-  if (!user) {
-    // Unknown or expired session: remove the useless cookie
-    res.clearCookie(SESSION_COOKIE, clearSessionCookieOptions());
-    res.status(401).json({ error: "Not logged in" });
-    return;
-  }
-
-  res.status(200).json(user);
+// GET /api/v1/auth/me → who is logged in?
+authRouter.get("/me", requireAuth, (_req, res) => {
+  res.status(200).json(getUser(res));
 });
 
 // POST /api/v1/auth/logout → delete the session and the cookie
