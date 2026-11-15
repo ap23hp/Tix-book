@@ -477,3 +477,48 @@ to run on production. That's why the guard exists too.
 - `"Event"` needs double quotes (capital letter); `$$ ... $$` = text with apostrophes and line breaks.
 - An UPDATE without WHERE changes every row.
 - BEGIN ... COMMIT = the same all-or-nothing transaction idea as the seed.
+## Vercel rewrite (15 Nov)
+- A rewrite means Vercel fetches a page from another server and sends it back under my own URL. The browser never sees the other server.
+- A redirect is different: it tells the browser to go to a new URL, so the URL changes.
+- `/api/:path*` matches everything after /api/ and sends it to Render.
+- Why I need it: in the next part of phase 2 my API will set a login cookie. If the browser called onrender.com directly, that cookie would come from a different site, and Safari may block it. Through the rewrite it's a vercel.app cookie.
+- Tested: tix-book.vercel.app/api/v1/events shows my events.
+- Not tested yet: the cookie part. I'll check it once login works.
+## Session table (15 Nov)
+- A session = one row in the Session table that says "this user is logged in until this time".
+- The `id` is a hash of the session token, not the token itself. The real token only lives in the user's cookie. If someone steals the database, the hashes can't be used as cookies.
+- `onDelete: Cascade`: if a user is deleted, their sessions are deleted too.
+- `@@index([userId])`: makes "find all sessions for this user" fast (needed for "log out everywhere").
+- `migrate dev` wrote the SQL into a migration file and ran it on my dev database. Production gets it later with `migrate deploy`.
+- Line endings: Windows uses CRLF, the repo uses LF. Git warnings about this are harmless; if only line endings changed, Git doesn't commit the file.
+
+## Sign-up and password hashing (15 Nov)
+- Never store a password. Store a hash: a one-way scramble. On login, I hash what the user types and compare.
+- Salt: random bytes added to each password before hashing, so two users with the same password get different hashes. Argon2 makes the salt for me and stores it inside the hash string.
+- The hash string holds everything: `$argon2id$v=19$m=19456,t=2,p=1$<salt>$<hash>`.
+- Argon2id is slow on purpose and uses memory (19 MiB per hash), so guessing millions of passwords is expensive. OWASP's first choice.
+- I lowercase emails so `Apra@x.com` and `apra@x.com` are one account.
+- 409 Conflict = the request is valid, but it clashes with data that already exists (email taken).
+- I catch Prisma's `P2002` error instead of checking "does this email exist?" first. Two sign-ups at the same moment could both pass a check; the database's unique rule can't be beaten. Same idea as race conditions in phase 4.
+- The API never sends `passwordHash` back (`select` only safe fields).
+- Tests: 201 on success, 409 on a duplicate email (even in capitals), 400 on bad input.
+## Login and session cookies (15 Nov)
+- Login: find the user by email, check the password with Argon2, create a Session row, send the token in a cookie.
+- Session token: 32 random bytes. The cookie holds the token; the database holds its SHA-256 hash.
+- Two kinds of hash: Argon2 (slow) for passwords, because people pick guessable ones. SHA-256 (fast) for tokens, because 256 random bits can't be guessed.
+- 401 = "I don't know who you are". 403 = "I know who you are, but you're not allowed" (coming in 2b).
+- Same error for wrong email and wrong password, so attackers can't find out who has an account. A dummy hash makes both take the same time.
+- Cookie flags:
+  - httpOnly: browser JavaScript can't read it (protects against XSS stealing it).
+  - Secure: only sent over HTTPS.
+  - SameSite=Lax: not sent on most requests from other sites (helps against CSRF).
+- Tests check the cookie flags, and that the database stores the hash, not the token.
+
+## /me and logout (15 Nov)
+- /me reads the session cookie, hashes the token, looks it up in the Session table, and returns the user, or 401.
+- cookie-parser: Express can set cookies on its own but needs this middleware to read them (fills `req.cookies`).
+- Expired session: return 401, delete the row, clear the cookie.
+- Logout: delete the session row, then clear the cookie. The browser only clears it if path and flags match the original.
+- 204 No Content = it worked, nothing to send back.
+- Revocation: after logout, the same cookie gets 401, because the row is gone. A JWT can't do this without extra server state. This is why I chose sessions (DECISIONS 023).
+- Cookie values can be anything, so I check `typeof token === "string"` before using it.

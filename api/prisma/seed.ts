@@ -55,7 +55,7 @@ async function main() {
       await tx.booking.deleteMany();
       await tx.event.deleteMany();
       await tx.user.deleteMany();
-  
+
       // 2. Users
       const sam = await tx.user.create({
         data: { name: "Sam K.", email: "sam@example.com", role: "ORGANISER" },
@@ -64,7 +64,11 @@ async function main() {
         data: { name: "Lena M.", email: "lena@example.com", role: "ORGANISER" },
       });
       const priya = await tx.user.create({
-        data: { name: "Priya Shah", email: "priya@example.com", role: "ATTENDEE" },
+        data: {
+          name: "Priya Shah",
+          email: "priya@example.com",
+          role: "ATTENDEE",
+        },
       });
       const tom = await tx.user.create({
         data: { name: "Tom Reid", email: "tom@example.com", role: "ATTENDEE" },
