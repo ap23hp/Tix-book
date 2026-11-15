@@ -502,3 +502,14 @@ to run on production. That's why the guard exists too.
 - I catch Prisma's `P2002` error instead of checking "does this email exist?" first. Two sign-ups at the same moment could both pass a check; the database's unique rule can't be beaten. Same idea as race conditions in phase 4.
 - The API never sends `passwordHash` back (`select` only safe fields).
 - Tests: 201 on success, 409 on a duplicate email (even in capitals), 400 on bad input.
+## Login and session cookies (15 Nov)
+- Login: find the user by email, check the password with Argon2, create a Session row, send the token in a cookie.
+- Session token: 32 random bytes. The cookie holds the token; the database holds its SHA-256 hash.
+- Two kinds of hash: Argon2 (slow) for passwords, because people pick guessable ones. SHA-256 (fast) for tokens, because 256 random bits can't be guessed.
+- 401 = "I don't know who you are". 403 = "I know who you are, but you're not allowed" (coming in 2b).
+- Same error for wrong email and wrong password, so attackers can't find out who has an account. A dummy hash makes both take the same time.
+- Cookie flags:
+  - httpOnly: browser JavaScript can't read it (protects against XSS stealing it).
+  - Secure: only sent over HTTPS.
+  - SameSite=Lax: not sent on most requests from other sites (helps against CSRF).
+- Tests check the cookie flags, and that the database stores the hash, not the token.
