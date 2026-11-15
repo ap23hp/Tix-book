@@ -17,7 +17,6 @@ export const createEventSchema = z
     pricePence: z.number().int().min(0),
     seatLimit: z.number().int().min(1).max(10000),
     coverImageUrl: z.string().url().optional(),
-    organiserId: z.string().min(1), // TODO phase 2: take from logged-in user instead
   })
   .superRefine((data, ctx) => {
     if (data.endsAt <= data.startsAt) {

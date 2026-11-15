@@ -275,3 +275,9 @@ Date: 14 Nov 2026
 **Options considered:** Argon2id (chosen), scrypt (built into Node, no extra package), bcrypt (older, limited to 72 bytes).
 **Why:** OWASP's first choice for new systems. Minimum settings because Render's free plan has little memory.
 **Trade-off:** A native package (prebuilt binaries) instead of zero dependencies with scrypt.
+## 025: Who can be an organiser
+**Date:** 15 Nov 2026
+**Decision:** Anyone can choose ATTENDEE or ORGANISER at sign-up (default ATTENDEE).
+**Options considered:** open choice (chosen); everyone starts as ATTENDEE and an admin promotes organisers.
+**Why:** Simple, and fits running my own free coding sessions as an organiser. The API still checks the role on every protected route.
+**Trade-off:** Anyone can publish events. If that becomes a problem, switch to admin promotion.

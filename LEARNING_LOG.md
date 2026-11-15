@@ -522,3 +522,11 @@ to run on production. That's why the guard exists too.
 - 204 No Content = it worked, nothing to send back.
 - Revocation: after logout, the same cookie gets 401, because the row is gone. A JWT can't do this without extra server state. This is why I chose sessions (DECISIONS 023).
 - Cookie values can be anything, so I check `typeof token === "string"` before using it.
+## Roles and protected routes (15 Nov)
+- Middleware: a function that runs before the route. It either stops the request (401/403) or calls next() to continue. They run in the order listed: requireAuth, requireRole, then the handler.
+- requireAuth: reads the cookie, finds the session, stores the user in res.locals, or returns 401.
+- requireRole("ORGANISER"): returns 403 if the logged-in user has a different role.
+- 401 = I don't know who you are. 403 = I know who you are, but you're not allowed.
+- Auth runs before validation, so strangers don't learn my field rules.
+- The organiser comes from the session, never from the request body. Zod drops unknown fields like organiserId. This closed decision 014.
+- /me now reuses requireAuth, so "who is this?" lives in one place.
