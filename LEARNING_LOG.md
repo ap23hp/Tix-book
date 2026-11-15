@@ -477,3 +477,10 @@ to run on production. That's why the guard exists too.
 - `"Event"` needs double quotes (capital letter); `$$ ... $$` = text with apostrophes and line breaks.
 - An UPDATE without WHERE changes every row.
 - BEGIN ... COMMIT = the same all-or-nothing transaction idea as the seed.
+## Vercel rewrite (15 Nov)
+- A rewrite means Vercel fetches a page from another server and sends it back under my own URL. The browser never sees the other server.
+- A redirect is different: it tells the browser to go to a new URL, so the URL changes.
+- `/api/:path*` matches everything after /api/ and sends it to Render.
+- Why I need it: in the next part of phase 2 my API will set a login cookie. If the browser called onrender.com directly, that cookie would come from a different site, and Safari may block it. Through the rewrite it's a vercel.app cookie.
+- Tested: tix-book.vercel.app/api/v1/events shows my events.
+- Not tested yet: the cookie part. I'll check it once login works.
