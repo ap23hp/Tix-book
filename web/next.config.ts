@@ -1,7 +1,6 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
   cacheComponents: true,
   partialPrefetching: true,
   turbopack: {
@@ -11,6 +10,16 @@ const nextConfig: NextConfig = {
         as: "*.css",
       },
     },
+  },
+  async rewrites() {
+    return [
+      {
+        // Browser calls vercel.app/api/..., Vercel forwards it to Render.
+        // The browser only ever talks to vercel.app, so auth cookies stay first-party.
+        source: "/api/:path*",
+        destination: "https://tixbook-api.onrender.com/api/:path*",
+      },
+    ];
   },
 };
 
