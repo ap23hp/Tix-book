@@ -281,3 +281,12 @@ Date: 14 Nov 2026
 **Options considered:** open choice (chosen); everyone starts as ATTENDEE and an admin promotes organisers.
 **Why:** Simple, and fits running my own free coding sessions as an organiser. The API still checks the role on every protected route.
 **Trade-off:** Anyone can publish events. If that becomes a problem, switch to admin promotion.
+
+## 026 — Header gets the logged-in user on the server
+Date: 2026-11-15
+Options: (1) Server Component reads the cookie and calls /me with it
+         (2) Client Component calls /me from the browser after load
+Chose: 1
+Why: The header arrives already showing the right state, with no "Log in" flash before
+"Hi, name". The session check stays on the server. Cost: the header needs its own
+<Suspense> (Cache Components rule), and Next makes one extra API call per page.
