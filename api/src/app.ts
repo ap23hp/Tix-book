@@ -1,5 +1,6 @@
 import express from "express";
 import { eventsRouter } from "./routes/events.js";
+import { authRouter } from "./routes/auth.js";
 import type { ErrorRequestHandler } from "express";
 const app = express();
 
@@ -10,6 +11,7 @@ app.get("/health", (_req, res) => {
 });
 
 app.use("/api/v1/events", eventsRouter);
+app.use("/api/v1/auth", authRouter);
 
 // Unknown routes → 404 JSON (instead of Express's default HTML page)
 app.use((_req, res) => {
