@@ -1,18 +1,28 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import Link from "next/link";
 import { Archivo, Geist, Geist_Mono } from "next/font/google";
+import { UserMenu } from "@/components/UserMenu";
 import "./globals.css";
 
-const archivo = Archivo({ variable: "--font-archivo", subsets: ["latin"], axes: ["wdth"] });
+const archivo = Archivo({
+  variable: "--font-archivo",
+  subsets: ["latin"],
+  axes: ["wdth"],
+});
 const geist = Geist({ variable: "--font-geist", subsets: ["latin"] });
-const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
+const geistMono = Geist_Mono({
+  variable: "--font-geist-mono",
+  subsets: ["latin"],
+});
 export const metadata: Metadata = {
   title: "Tixbook | Event tickets",
   description:
     "Browse upcoming comedy, music, business and workshop events, and book your ticket on Tixbook.",
 };
 
-const logo = "font-display font-extrabold [font-variation-settings:'wdth'_75] tracking-tight text-ink";
+const logo =
+  "font-display font-extrabold [font-variation-settings:'wdth'_75] tracking-tight text-ink";
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
@@ -33,10 +43,17 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         </a>
 
         <header className="border-b border-line">
-          <div className="mx-auto w-full max-w-300 px-6 py-4">
+          <div className="mx-auto flex w-full max-w-300 items-center justify-between px-6 py-4">
             <Link href="/" className={`text-2xl ${logo}`}>
               tixbook<span className="text-accent">.</span>
             </Link>
+            {/* UserMenu reads the cookie, so it needs its own Suspense.
+                The rest of the page doesn't wait for it. */}
+            <Suspense
+              fallback={<div className="h-9 w-20" aria-hidden="true" />}
+            >
+              <UserMenu />
+            </Suspense>
           </div>
         </header>
 

@@ -21,3 +21,12 @@ export type EventDetail = EventSummary & {
   seatLimit: number;
   seatsLeft: number;
 };
+export type Role = "ATTENDEE" | "ORGANISER";
+
+// The logged-in user, as returned by GET /api/v1/auth/me
+export type User = {
+  id: string;
+  name: string;
+  email: string;
+  role: Role;
+};

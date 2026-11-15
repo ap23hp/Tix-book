@@ -530,3 +530,24 @@ to run on production. That's why the guard exists too.
 - Auth runs before validation, so strangers don't learn my field rules.
 - The organiser comes from the session, never from the request body. Zod drops unknown fields like organiserId. This closed decision 014.
 - /me now reuses requireAuth, so "who is this?" lives in one place.
+## 2026-11-15 — Login pages and header login state (phase 2c)
+
+**What I built:** /signup, /login and /account pages, and a header that shows
+"Log in" or "Hi, name" with a Log out button.
+
+**How the header knows who I am:** a Server Component reads the session cookie
+and calls the API's /me. It forwards the cookie by hand, because a
+server-to-server fetch doesn't send the browser's cookies automatically.
+
+**Key rules I learned:**
+- With Cache Components on, reading cookies() outside <Suspense> is a build error.
+  So the header's user part has its own Suspense, and the rest of the page doesn't wait.
+- Forms call "/api/..." (a relative URL), so they go through the Vercel rewrite and
+  the cookie is first-party.
+- After login, router.refresh() is needed: the layout (header) doesn't re-render
+  on navigation by itself.
+- redirect("/login") throws to stop rendering, so code after it never runs.
+- The rewrite now points at API_URL, so local log-ins hit my local API, not production.
+
+**Trade-off:** checking on the server means one extra API call per page,
+but there's no "Log in" flash before "Hi, name".
