@@ -253,3 +253,25 @@ Date: 14 Nov 2026
 - Lighthouse measures performance, which is phase 7's focus; measuring then gives before/after numbers.
 **Trade-off:** Phase 1 ships without a way to create events from the UI (seed and API only).
 **Revisit if:** Never needed; both are scheduled.
+
+## 023: Auth approach (phase 2)
+**Date:** 15 Nov 2026
+**Decision:** Build email/password auth myself with database sessions (httpOnly cookie, session table in Postgres). Use Arctic only for the Google OAuth flow. Use a signed JWT later for ticket QR codes (phase 5).
+**Options considered:**
+- A. Build sessions myself (chosen)
+- B. Better Auth (the most common library choice for new TypeScript projects in 2026)
+- C. Clerk or Auth0 (managed services)
+- JWT for login
+**Why:**
+- The project's goal is learning by building, and UK job ads test whether I understand OAuth, sessions and JWT, not a specific library.
+- Sessions give instant logout and revocation. A JWT for login can't be revoked without adding server-side state, which removes its main benefit.
+- A JWT fits tickets: a signed claim that a scanner can verify without the database.
+**Trade-off:** More security risk and time than a library. At a company I'd use Better Auth or Auth0, because auth isn't the product.
+**Cookies:** Vercel rewrites `/api/*` to Render, so the browser only talks to vercel.app and the cookie is first-party. This avoids Safari blocking cross-site cookies.
+
+## 024: Password hashing
+**Date:** 15 Nov 2026
+**Decision:** Argon2id via the `argon2` npm package, OWASP minimum settings (19 MiB, 2 iterations, 1 thread).
+**Options considered:** Argon2id (chosen), scrypt (built into Node, no extra package), bcrypt (older, limited to 72 bytes).
+**Why:** OWASP's first choice for new systems. Minimum settings because Render's free plan has little memory.
+**Trade-off:** A native package (prebuilt binaries) instead of zero dependencies with scrypt.
