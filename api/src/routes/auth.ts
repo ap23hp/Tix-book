@@ -100,7 +100,7 @@ authRouter.post("/login", async (req, res) => {
   });
 });
 // GET /api/v1/auth/me → who is logged in?
-// GET /api/v1/auth/me → who is logged in?
+
 authRouter.get("/me", requireAuth, (_req, res) => {
   res.status(200).json(getUser(res));
 });
