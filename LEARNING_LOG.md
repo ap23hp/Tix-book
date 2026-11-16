@@ -551,3 +551,23 @@ server-to-server fetch doesn't send the browser's cookies automatically.
 
 **Trade-off:** checking on the server means one extra API call per page,
 but there's no "Log in" flash before "Hi, name".
+
+## 2026-11-16 — Forms kept old values after navigating away (bug #27)
+
+**The bug:** after logging out and opening /login again, the form still showed my old
+email, password and the old "Invalid email or password" error.
+
+**Why:** with `cacheComponents: true`, Next.js 16 doesn't remove a page when you
+leave it. It hides it with React's `<Activity>` (up to 3 pages), so input values
+and useState are kept.
+
+**Fix:** a `useLayoutEffect` cleanup runs when the page is hidden. It calls
+`form.reset()` and clears the message, field errors and `pending`.
+
+**Mistake on the way:** the first version forgot `ref={formRef}` on the `<form>`.
+The code compiled and the tests passed, because nothing checked the real behaviour.
+I added a test that hides and shows the form with `<Activity>` and checks the
+inputs are empty. It fails without the ref.
+
+**Lesson:** a test should check what the user sees, not just that the code runs.
+Keeping state is good for drafts, bad for passwords.
