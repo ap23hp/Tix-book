@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useLayoutEffect, useRef, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormField } from "@/components/FormField";
@@ -11,6 +11,21 @@ export function SignupForm() {
   const [message, setMessage] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [pending, setPending] = useState(false);
+  const formRef = useRef<HTMLFormElement>(null);
+
+  // With Cache Components, Next.js hides pages (React <Activity>) instead of
+  // removing them, so typed values and old errors would still be there when
+  // the user comes back. For a login form that's wrong (and a password should
+  // never sit in the page), so clear everything when this page is hidden.
+  useLayoutEffect(() => {
+    const form = formRef.current;
+    return () => {
+      form?.reset();
+      setMessage(null);
+      setFieldErrors({});
+      setPending(false);
+    };
+  }, []);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -54,6 +69,7 @@ export function SignupForm() {
 
   return (
     <form
+      ref={formRef}
       onSubmit={handleSubmit}
       noValidate
       className="mt-8 flex flex-col gap-5"

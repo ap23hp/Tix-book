@@ -1,3 +1,4 @@
+import { Activity } from "react";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { LoginForm } from "@/components/LoginForm";
 
@@ -77,5 +78,34 @@ describe("LoginForm", () => {
     expect(push).not.toHaveBeenCalled();
     // Button works again so they can retry
     expect(screen.getByRole("button", { name: "Log in" })).toBeEnabled();
+  });
+
+  it("clears typed values and old errors when the page is hidden", async () => {
+    mockFetch(401, { error: "Invalid email or password" });
+
+    // Next.js (Cache Components) hides pages with <Activity> instead of removing them.
+    // Simulate: show the page, hide it (user navigated away), show it again.
+    const { rerender } = render(
+      <Activity mode="visible">
+        <LoginForm />
+      </Activity>,
+    );
+    fillAndSubmit();
+    await screen.findByRole("alert");
+
+    rerender(
+      <Activity mode="hidden">
+        <LoginForm />
+      </Activity>,
+    );
+    rerender(
+      <Activity mode="visible">
+        <LoginForm />
+      </Activity>,
+    );
+
+    expect(screen.getByLabelText("Email")).toHaveValue("");
+    expect(screen.getByLabelText("Password")).toHaveValue("");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 });
