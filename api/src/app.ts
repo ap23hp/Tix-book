@@ -3,10 +3,12 @@ import { eventsRouter } from "./routes/events.js";
 import cookieParser from "cookie-parser";
 import { authRouter } from "./routes/auth.js";
 import type { ErrorRequestHandler } from "express";
+import { blockCrossSiteWrites } from "./middleware/csrf.js";
 const app = express();
 
 app.use(express.json());
 app.use(cookieParser());
+app.use(blockCrossSiteWrites); // CSRF: refuse writes started by other websites
 app.get("/health", (_req, res) => {
   res.status(200).json({ status: "ok" });
 });
