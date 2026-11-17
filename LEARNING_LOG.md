@@ -607,3 +607,24 @@ being sent; it only stops reading the answer.
 
 "CORS protects reading; CSRF is about sending. I don't need a
 CSRF token because of SameSite=Lax plus a Fetch Metadata check."
+
+## 2026-11-17 — Phase 3a: Find events
+
+**One error format:** routes `throw new HttpError(status, message)`; one error handler
+turns it into `{ error, details? }`. Bugs only ever show "Something went wrong".
+Lesson: different messages for different 404s ("Not found" vs "Event not found")
+told me which code answered when a test failed.
+
+**Cursor pagination:** the API sends 12 events + a cursor (last event's startsAt + id).
+Next page = "events after this one" (keyset). Stable when events are added or removed;
+offset (`?page=2`) can show duplicates or skip items. Fetch 13 to know if there's more.
+
+**Transaction:** sign-up saves the user AND the session in `prisma.$transaction`:
+both or neither. Inside, use `tx`, not `prisma`.
+
+**Search in the URL:** filters change the URL; the server page re-renders. Shareable,
+survives refresh.
+
+**Race conditions:** debounce typing (300 ms); each keystroke's effect cleanup cancels
+the old timer. "Load more" uses AbortController and is cancelled on unmount, so a late
+answer can't add old results to a new list. A `key` from the filters gives a fresh list.

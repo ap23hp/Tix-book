@@ -32,6 +32,40 @@ describe("POST /api/v1/auth/signup", () => {
     expect(saved?.passwordHash?.startsWith("$argon2id$")).toBe(true);
   });
 
+  it("logs you in straight away: sets the cookie and saves a session", async () => {
+    const otherEmail = `auth-test-signup-cookie-${runId}@example.com`;
+    const response = await request(app).post("/api/v1/auth/signup").send({
+      name: "Cookie User",
+      email: otherEmail,
+      password: "correct-horse-1",
+    });
+
+    expect(response.status).toBe(201);
+    const cookie = response.get("Set-Cookie")?.[0] ?? "";
+    expect(cookie).toMatch(/^session=/);
+    expect(cookie).toContain("HttpOnly");
+
+    // The cookie works: /me knows who we are
+    const me = await request(app)
+      .get("/api/v1/auth/me")
+      .set("Cookie", cookie.split(";")[0] ?? "");
+    expect(me.status).toBe(200);
+    expect(me.body.email).toBe(otherEmail);
+  });
+
+  it("saves nothing when the email is taken (no half-created account)", async () => {
+    const response = await request(app).post("/api/v1/auth/signup").send({
+      name: "Copy",
+      email,
+      password: "another-pass-1",
+    });
+
+    expect(response.status).toBe(409);
+    expect(response.get("Set-Cookie")).toBeUndefined();
+    // Still exactly one account with this email
+    expect(await prisma.user.count({ where: { email } })).toBe(1);
+  });
+
   it("returns 409 for an email that is already registered", async () => {
     // Same email in capitals: should still count as the same account
     const response = await request(app).post("/api/v1/auth/signup").send({
@@ -113,6 +147,7 @@ describe("POST /api/v1/auth/login", () => {
     expect(noSuchUser.body).toEqual(wrongPassword.body);
   });
 });
+
 describe("GET /api/v1/auth/me and POST /api/v1/auth/logout", () => {
   const email = `auth-test-session-${runId}@example.com`;
   const password = "correct-horse-3";

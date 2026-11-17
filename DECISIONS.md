@@ -323,3 +323,12 @@ GET never changes data + `state` on the Google callback. Defence in depth:
 middleware rejects POST/PUT/PATCH/DELETE when Sec-Fetch-Site is cross-site or
 same-site (Fetch Metadata). Requests without the header (non-browsers) are allowed.
 Trade-off: very old browsers don't send Sec-Fetch-Site; they still get SameSite.
+
+## 030 — Cursor pagination for the event list
+Date: 2026-11-17
+Options: (1) Offset (?page=2 → skip/take)  (2) Cursor (?cursor=<last seen>)
+Chose: 2, keyset on (startsAt, id), opaque base64url cursor, "Load more" in the UI
+Why: stable when events are added or removed (no duplicates or gaps), stays fast on big
+tables, fits the month-grouped list. Response: { events, nextCursor }.
+Trade-off: no "jump to page 5"; slightly more logic. An index on (status, startsAt, id)
+will help in phase 7.

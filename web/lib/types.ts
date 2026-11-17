@@ -11,7 +11,12 @@ export type EventSummary = {
   venueName: string | null;
   pricePence: number;
 };
-
+// One page of GET /api/v1/events
+export type EventPage = {
+  events: EventSummary[];
+  // Send this back as ?cursor= to get the next page; null on the last page
+  nextCursor: string | null;
+};
 // Extra fields returned by GET /api/v1/events/:id
 export type EventDetail = EventSummary & {
   description: string;

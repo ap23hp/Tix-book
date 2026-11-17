@@ -32,17 +32,14 @@ export function SignupForm() {
     if (pending) return;
 
     const form = new FormData(event.currentTarget);
-    const email = form.get("email");
-    const password = form.get("password");
-
     setPending(true);
     setMessage(null);
     setFieldErrors({});
 
     const signup = await postAuth("signup", {
       name: form.get("name"),
-      email,
-      password,
+      email: form.get("email"),
+      password: form.get("password"),
       role: form.get("role"),
     });
 
@@ -53,16 +50,8 @@ export function SignupForm() {
       return;
     }
 
-    // Sign-up doesn't start a session (the API keeps them separate),
-    // so log in straight away with the same details.
-    const login = await postAuth("login", { email, password });
-
-    if (!login.ok) {
-      // Account exists but auto-login failed: send them to log in by hand
-      router.push("/login");
-      return;
-    }
-
+    // Sign-up also logs you in (the API sets the session cookie),
+    // so go home and refresh the header
     router.push("/");
     router.refresh();
   }

@@ -62,26 +62,23 @@ describe("SignupForm", () => {
     );
   });
 
-  it("signs up, then logs in, then goes home", async () => {
+  it("signs up with one request, then goes home", async () => {
     global.fetch = jest
       .fn()
-      .mockResolvedValueOnce(response(201, { id: "u1" })) // signup
-      .mockResolvedValueOnce(response(200, { id: "u1" })) as jest.Mock; // login
+      .mockResolvedValue(response(201, { id: "u1" })) as jest.Mock;
     render(<SignupForm />);
     fillAndSubmit();
 
     await screen.findByRole("button", { name: "Creating account…" });
     await new Promise((r) => setTimeout(r, 0));
-    expect(global.fetch).toHaveBeenNthCalledWith(
-      1,
+
+    // The API logs you in as part of sign-up, so there's no second call
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+    expect(global.fetch).toHaveBeenCalledWith(
       "/api/v1/auth/signup",
       expect.anything(),
     );
-    expect(global.fetch).toHaveBeenNthCalledWith(
-      2,
-      "/api/v1/auth/login",
-      expect.anything(),
-    );
     expect(push).toHaveBeenCalledWith("/");
+    expect(refresh).toHaveBeenCalled();
   });
 });

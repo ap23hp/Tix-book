@@ -48,3 +48,20 @@ export const createEventSchema = z
       });
     }
   });
+
+// GET /api/v1/events?q=&category=&format=&limit=&cursor=
+// Everything comes from the URL, so it arrives as strings.
+export const listEventsQuerySchema = z.object({
+  // Text to search for in the title; an empty box means "no search"
+  q: z
+    .string()
+    .trim()
+    .max(100)
+    .optional()
+    .transform((value) => value || undefined),
+  category: z.string().trim().min(1).max(50).optional(),
+  format: z.enum(["IN_PERSON", "ONLINE"]).optional(),
+  // "12" → 12; anything outside 1–50 is a 400
+  limit: z.coerce.number().int().min(1).max(50).default(12),
+  cursor: z.string().max(200).optional(),
+});
