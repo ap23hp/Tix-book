@@ -24,17 +24,23 @@ export function hashToken(token: string): string {
   return createHash("sha256").update(token).digest("hex");
 }
 
-export async function createSession(userId: string) {
+// A new random token, the hash to store as Session.id, and the expiry.
+// Doesn't save anything, so it can be used inside a transaction.
+export function newSessionToken() {
   const token = generateSessionToken();
   const expiresAt = new Date(Date.now() + SESSION_DAYS * 24 * 60 * 60 * 1000);
+  return { token, id: hashToken(token), expiresAt };
+}
+
+export async function createSession(userId: string) {
+  const { token, id, expiresAt } = newSessionToken();
 
   await prisma.session.create({
-    data: { id: hashToken(token), userId, expiresAt },
+    data: { id, userId, expiresAt },
   });
 
   return { token, expiresAt };
 }
-
 // Returns the logged-in user, or null if the token is unknown or expired
 export async function validateSessionToken(token: string) {
   const id = hashToken(token);

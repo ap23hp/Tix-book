@@ -13,20 +13,22 @@ import {
   clearSessionCookieOptions,
   createSession,
   invalidateSession,
+  newSessionToken,
   sessionCookieOptions,
 } from "../lib/session.js";
 import { getGoogle } from "../lib/google.js";
 import { findOrCreateGoogleUser } from "../lib/google-user.js";
 import { getUser, requireAuth } from "../middleware/auth.js";
+import { HttpError, parseOrThrow } from "../lib/errors.js";
 import {
   googleClaimsSchema,
   loginSchema,
   signupSchema,
 } from "../schemas/auth.js";
-import { HttpError, parseOrThrow } from "../lib/errors.js";
+
 export const authRouter = Router();
 
-// POST /api/v1/auth/signup → create an account
+// POST /api/v1/auth/signup → create an account and log in straight away
 authRouter.post("/signup", async (req, res) => {
   // Invalid body → throws 400 { error, details } (see lib/errors.ts)
   const { name, email, password, role } = parseOrThrow(
@@ -35,20 +37,37 @@ authRouter.post("/signup", async (req, res) => {
     "Invalid sign-up data",
   );
   const passwordHash = await hashPassword(password);
+  const session = newSessionToken();
 
   try {
-    const user = await prisma.user.create({
-      data: { name, email, passwordHash, role },
-      // Never send the hash back
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        role: true,
-        createdAt: true,
-      },
+    // Transaction: the user AND their first session are saved together.
+    // If the second write fails, the first is undone, so we never end up
+    // with an account that exists but whose sign-up "failed".
+    const user = await prisma.$transaction(async (tx) => {
+      const user = await tx.user.create({
+        data: { name, email, passwordHash, role },
+        // Never send the hash back
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          role: true,
+          createdAt: true,
+        },
+      });
+
+      await tx.session.create({
+        data: { id: session.id, userId: user.id, expiresAt: session.expiresAt },
+      });
+
+      return user;
     });
 
+    res.cookie(
+      SESSION_COOKIE,
+      session.token,
+      sessionCookieOptions(session.expiresAt),
+    );
     res.status(201).json(user);
   } catch (err) {
     // P2002 = a unique column (email) already has this value
@@ -58,6 +77,7 @@ authRouter.post("/signup", async (req, res) => {
     throw err; // anything else → errorHandler → 500
   }
 });
+
 // Used when the email doesn't exist, so a wrong email takes
 // as long as a wrong password (attackers can't time the difference)
 const dummyHash = hashPassword("not-a-real-password");
@@ -90,6 +110,7 @@ authRouter.post("/login", async (req, res) => {
     role: user.role,
   });
 });
+
 // GET /api/v1/auth/me → who is logged in?
 authRouter.get("/me", requireAuth, (_req, res) => {
   res.status(200).json(getUser(res));
