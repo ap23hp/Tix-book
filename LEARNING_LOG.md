@@ -571,3 +571,24 @@ inputs are empty. It fails without the ref.
 
 **Lesson:** a test should check what the user sees, not just that the code runs.
 Keeping state is good for drafts, bad for passwords.
+## 2026-11-17 — Google login (OAuth 2.0 / OpenID Connect)
+
+**The flow:** button → our API → Google → back to our callback with a one-time `code`
+→ API swaps the code (+ secret) for tokens → reads the ID token (who you are)
+→ find or create user → normal session cookie.
+
+**state:** random value in a cookie and in the URL. If they don't match on the way
+back, someone else started this login (CSRF). Reject.
+
+**PKCE (code verifier):** we keep a secret, send Google only its hash. When swapping
+the code we prove we have the original, so a stolen code is useless.
+
+**OAuth vs OIDC:** OAuth = permission to access an API. OIDC adds the ID token =
+who the user is. "Sign in with Google" is OIDC.
+
+**Pre-account hijacking:** never auto-link a social login to an account whose email
+wasn't verified.
+
+**Small lessons:** the Google button is a plain `<a>`, not `<Link>`, because it's a full
+page load to the API. Testing mode = only listed test users can sign in.
+Chrome's autofill (blue fields, key icon) is the browser, not my app.

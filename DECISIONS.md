@@ -290,3 +290,25 @@ Chose: 1
 Why: The header arrives already showing the right state, with no "Log in" flash before
 "Hi, name". The session check stays on the server. Cost: the header needs its own
 <Suspense> (Cache Components rule), and Next makes one extra API call per page.
+## 027 — Google login: authorization code flow + PKCE, in the API
+Date: 2026-11-17
+Options: (1) Code flow in our Express API with Arctic
+         (2) Google's "Sign in with Google" button (ID token verified by the API)
+         (3) Auth library (Better Auth / Auth.js)
+         (4) Managed provider (Auth0, Clerk, Cognito)
+Chose: 1
+Why: Teaches the full flow (state, PKCE, code exchange). After Google, it creates the
+same session as password login, so /me, roles and logout don't change. The callback
+goes through the Vercel rewrite, so the session cookie stays first-party.
+Trade-off: more code and security details to own. In a company I'd likely use a
+managed provider or library.
+
+## 028 — Don't auto-link Google to an existing password account
+Date: 2026-11-17
+Problem: we don't verify emails at sign-up. If someone signed up with your email and a
+password, linking your Google login to that account would let them keep access
+(pre-account hijacking).
+Chose: if the email already has a password (or a different Google account), refuse
+and show "Log in with your email and password". Link only accounts with neither
+(e.g. seeded users). New Google users are ATTENDEE.
+Later: email verification would make safe linking possible.
