@@ -1,3 +1,4 @@
+import { toQueryString, type EventFilters } from "@/lib/events";
 import type { EventDetail, EventPage } from "@/lib/types";
 
 const API_URL = process.env.API_URL;
@@ -33,22 +34,12 @@ export async function fetchJson<T>(path: string): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-export type EventFilters = {
-  q?: string;
-  category?: string;
-  format?: string;
-  cursor?: string;
-};
-
-// Builds e.g. /api/v1/events?q=jazz&format=ONLINE (empty values are left out)
+// First page of events, e.g. /api/v1/events?q=jazz&format=ONLINE
 export function getEvents(filters: EventFilters = {}) {
-  const params = new URLSearchParams();
-  for (const [key, value] of Object.entries(filters)) {
-    if (value) params.set(key, value);
-  }
-  const query = params.toString();
+  const query = toQueryString(filters);
   return fetchJson<EventPage>(`/api/v1/events${query ? `?${query}` : ""}`);
 }
+
 // Returns null when the event doesn't exist, so the page can show "not found"
 export async function getEvent(id: string): Promise<EventDetail | null> {
   try {
