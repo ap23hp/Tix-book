@@ -1,22 +1,54 @@
 import { Router } from "express";
 import { prisma } from "../lib/prisma.js";
-import { createEventSchema } from "../schemas/event.js";
+import { createEventSchema, listEventsQuerySchema } from "../schemas/event.js";
 import { getUser, requireAuth, requireRole } from "../middleware/auth.js";
 import { HttpError, parseOrThrow } from "../lib/errors.js";
+import { decodeCursor, encodeCursor } from "../lib/cursor.js";
 export const eventsRouter = Router();
 
-// GET /api/v1/events → published, upcoming events, soonest first
-eventsRouter.get("/", async (_req, res) => {
-  const events = await prisma.event.findMany({
+// GET /api/v1/events → published, upcoming events, soonest first.
+// Cursor pagination: returns { events, nextCursor }.
+// To get the next page, send ?cursor=<nextCursor>. nextCursor is null on the last page.
+eventsRouter.get("/", async (req, res) => {
+  const { q, category, format, limit, cursor } = parseOrThrow(
+    listEventsQuerySchema,
+    req.query,
+    "Invalid query",
+  );
+
+  // "After the last event you saw": a later start time, or the same
+  // start time with a bigger id (keyset pagination)
+  const after = cursor ? decodeCursor(cursor) : null;
+  if (cursor && !after) throw new HttpError(400, "Invalid cursor");
+
+  // Ask for one extra row: if it comes back, there's another page
+  const rows = await prisma.event.findMany({
     where: {
       status: "PUBLISHED",
       startsAt: { gt: new Date() },
+      ...(q && { title: { contains: q, mode: "insensitive" } }),
+      ...(category && { category: { equals: category, mode: "insensitive" } }),
+      ...(format && { format }),
+      ...(after && {
+        OR: [
+          { startsAt: { gt: after.startsAt } },
+          { startsAt: after.startsAt, id: { gt: after.id } },
+        ],
+      }),
     },
-    orderBy: { startsAt: "asc" },
-    omit: { meetingLink: true }, // ← new: hide the meeting link
+    orderBy: [{ startsAt: "asc" }, { id: "asc" }],
+    take: limit + 1,
+    omit: { meetingLink: true }, // the link is only for people who booked
   });
 
-  res.status(200).json(events);
+  const hasMore = rows.length > limit;
+  const events = hasMore ? rows.slice(0, limit) : rows;
+  const last = events.at(-1);
+
+  res.status(200).json({
+    events,
+    nextCursor: hasMore && last ? encodeCursor(last) : null,
+  });
 });
 
 // GET /api/v1/events/:id → one published event, with seats left

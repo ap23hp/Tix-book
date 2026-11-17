@@ -23,7 +23,7 @@ export default function Home() {
 
 async function EventList() {
   await connection(); // render at request time, so "today" is really today
-  const events = await getEvents();
+  const { events } = await getEvents();
   const now = new Date();
 
   if (events.length === 0) {
