@@ -23,25 +23,17 @@ import {
   loginSchema,
   signupSchema,
 } from "../schemas/auth.js";
-
+import { HttpError, parseOrThrow } from "../lib/errors.js";
 export const authRouter = Router();
 
 // POST /api/v1/auth/signup → create an account
 authRouter.post("/signup", async (req, res) => {
-  const result = signupSchema.safeParse(req.body);
-
-  if (!result.success) {
-    res.status(400).json({
-      error: "Invalid sign-up data",
-      details: result.error.issues.map((issue) => ({
-        field: issue.path.join("."),
-        message: issue.message,
-      })),
-    });
-    return;
-  }
-
-  const { name, email, password, role } = result.data;
+  // Invalid body → throws 400 { error, details } (see lib/errors.ts)
+  const { name, email, password, role } = parseOrThrow(
+    signupSchema,
+    req.body,
+    "Invalid sign-up data",
+  );
   const passwordHash = await hashPassword(password);
 
   try {
@@ -61,35 +53,22 @@ authRouter.post("/signup", async (req, res) => {
   } catch (err) {
     // P2002 = a unique column (email) already has this value
     if (isUniqueConstraintError(err)) {
-      res
-        .status(409)
-        .json({ error: "An account with this email already exists" });
-      return;
+      throw new HttpError(409, "An account with this email already exists");
     }
     throw err; // anything else → errorHandler → 500
   }
 });
-
 // Used when the email doesn't exist, so a wrong email takes
 // as long as a wrong password (attackers can't time the difference)
 const dummyHash = hashPassword("not-a-real-password");
 
 // POST /api/v1/auth/login → check password, create session, set cookie
 authRouter.post("/login", async (req, res) => {
-  const result = loginSchema.safeParse(req.body);
-
-  if (!result.success) {
-    res.status(400).json({
-      error: "Invalid login data",
-      details: result.error.issues.map((issue) => ({
-        field: issue.path.join("."),
-        message: issue.message,
-      })),
-    });
-    return;
-  }
-
-  const { email, password } = result.data;
+  const { email, password } = parseOrThrow(
+    loginSchema,
+    req.body,
+    "Invalid login data",
+  );
   const user = await prisma.user.findUnique({ where: { email } });
 
   // Always run verify, even with no user, so timing looks the same
@@ -98,8 +77,7 @@ authRouter.post("/login", async (req, res) => {
 
   // Same message for wrong email and wrong password
   if (!user || !user.passwordHash || !passwordOk) {
-    res.status(401).json({ error: "Invalid email or password" });
-    return;
+    throw new HttpError(401, "Invalid email or password");
   }
 
   const { token, expiresAt } = await createSession(user.id);
@@ -112,7 +90,6 @@ authRouter.post("/login", async (req, res) => {
     role: user.role,
   });
 });
-
 // GET /api/v1/auth/me → who is logged in?
 authRouter.get("/me", requireAuth, (_req, res) => {
   res.status(200).json(getUser(res));
