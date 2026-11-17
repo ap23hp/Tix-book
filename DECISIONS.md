@@ -312,3 +312,14 @@ Chose: if the email already has a password (or a different Google account), refu
 and show "Log in with your email and password". Link only accounts with neither
 (e.g. seeded users). New Google users are ATTENDEE.
 Later: email verification would make safe linking possible.
+
+## 029 — CORS and CSRF
+Date: 2026-11-17
+CORS: no CORS middleware. The browser only calls tix-book.vercel.app (rewrite to
+Render), so requests are same-origin; Next.js → Render is server-to-server. Not
+adding CORS headers means other sites' JavaScript can't read our API's responses.
+CSRF: no CSRF token. Protection = SameSite=Lax session cookie + JSON-only bodies +
+GET never changes data + `state` on the Google callback. Defence in depth:
+middleware rejects POST/PUT/PATCH/DELETE when Sec-Fetch-Site is cross-site or
+same-site (Fetch Metadata). Requests without the header (non-browsers) are allowed.
+Trade-off: very old browsers don't send Sec-Fetch-Site; they still get SameSite.

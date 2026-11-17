@@ -592,3 +592,18 @@ wasn't verified.
 **Small lessons:** the Google button is a plain `<a>`, not `<Link>`, because it's a full
 page load to the API. Testing mode = only listed test users can sign in.
 Chrome's autofill (blue fields, key icon) is the browser, not my app.
+
+## 2026-11-17 — CORS vs CSRF
+
+**CORS** = a browser rule about whether JavaScript on site A may *read* a response
+from site B. Our browser only talks to our own domain (rewrite), so we need none.
+
+**CSRF** = another site makes *your* browser send a request to us, with your cookie,
+to change something (e.g. a hidden form that POSTs). CORS doesn't stop the request
+being sent; it only stops reading the answer.
+
+**My defences:** SameSite=Lax cookie, JSON-only API, GET never changes data,
+`state` in Google login, and a Sec-Fetch-Site check that blocks cross-site writes.
+
+"CORS protects reading; CSRF is about sending. I don't need a
+CSRF token because of SameSite=Lax plus a Fetch Metadata check."
