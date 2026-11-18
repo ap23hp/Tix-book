@@ -3,13 +3,11 @@
 import { useLayoutEffect, useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
-import { Input } from "@/components/ui/Input";
+import { fieldClass, Input } from "@/components/ui/Input";
+import { Select } from "@/components/ui/Select";
 import { postJson, type FieldErrors } from "@/lib/client-api";
 
 const CATEGORIES = ["Comedy", "Music", "Business", "Workshops"];
-
-const inputClass =
-  "rounded-lg border border-line bg-surface px-4 py-3 text-ink aria-invalid:border-accent";
 
 // "2026-12-05T19:30" (from <input type="datetime-local">) → ISO string in UTC.
 // The browser reads the value in the organiser's own timezone.
@@ -148,7 +146,7 @@ export function CreateEventForm() {
           aria-describedby={
             fieldErrors.description ? "description-error" : undefined
           }
-          className={inputClass}
+          className={fieldClass}
         />
         {fieldErrors.description && (
           <p id="description-error" className="text-sm text-accent">
@@ -157,23 +155,15 @@ export function CreateEventForm() {
         )}
       </div>
 
-      <div className="flex flex-col gap-1.5">
-        <label htmlFor="category" className="text-sm font-semibold text-ink">
-          Category
-        </label>
-        <select
-          id="category"
-          name="category"
-          defaultValue={CATEGORIES[0]}
-          className={inputClass}
-        >
-          {CATEGORIES.map((category) => (
-            <option key={category} value={category}>
-              {category}
-            </option>
-          ))}
-        </select>
-      </div>
+      <Select
+        label="Category"
+        name="category"
+        defaultValue={CATEGORIES[0]}
+        options={CATEGORIES.map((category) => ({
+          value: category,
+          label: category,
+        }))}
+      />
 
       <fieldset className="flex flex-col gap-2">
         <legend className="text-sm font-semibold text-ink">Format</legend>
