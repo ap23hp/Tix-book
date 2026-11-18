@@ -332,3 +332,27 @@ Why: stable when events are added or removed (no duplicates or gaps), stays fast
 tables, fits the month-grouped list. Response: { events, nextCursor }.
 Trade-off: no "jump to page 5"; slightly more logic. An index on (status, startsAt, id)
 will help in phase 7.
+
+## 031 — Client state for toasts: React Context, no state library
+Date: 2026-11-18
+Options: (1) None: pass a toast function down through props
+         (2) React Context + useState
+         (3) Zustand (small global store, no provider)
+Chose: 2. `ToastProvider` in the root layout keeps the list of toasts in its own
+useState. The context holds only the `toast()` function, made once with
+`useCallback(..., [])`, so it never changes.
+Why:
+- Any component, at any depth, needs to show a toast; passing a function through
+  every layer (option 1) doesn't scale.
+- Context's usual cost is that every component reading it re-renders when its value
+  changes. Here the value never changes, so callers never re-render. A test checks
+  this, and fails if the function is re-created.
+- Built into React: no new package for one small piece of state.
+- The root layout stays mounted across navigations, so a toast shown just before
+  `router.push()` is still there on the next page.
+- Most of the app's data is server state (events, bookings), fetched in Server
+  Components (decision 015). That isn't a job for a client store.
+Trade-off: the provider has to wrap the app, and `useToast()` throws outside it.
+Zustand would avoid the provider and let components pick just the part they need.
+Revisit if: several unrelated pieces of client state need sharing across pages
+(e.g. a seat picker plus a basket), or Context re-renders show up as slow.

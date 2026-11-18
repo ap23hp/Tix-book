@@ -628,3 +628,51 @@ survives refresh.
 **Race conditions:** debounce typing (300 ms); each keystroke's effect cleanup cancels
 the old timer. "Load more" uses AbortController and is cancelled on unmount, so a late
 answer can't add old results to a new list. A `key` from the filters gives a fresh list.
+
+## 2026-11-18 — Phase 3b: UI kit, `<dialog>` and live regions
+
+**Native `<dialog>` (Modal):** `dialog.showModal()` gives me, from the browser:
+- a focus trap: the rest of the page becomes inert, so Tab can't leave the dialog
+- Escape to close (the browser fires `cancel`, then `close`)
+- focus moves into the dialog on open, and back to the opening button on close
+- the "top layer": always on top, no z-index; style the dark background with `::backdrop`
+
+**Keeping React and the dialog in sync (both ways):**
+- Prop → dialog: an effect calls `showModal()` when `open` is true and `close()`
+  when it's false. Check `dialog.open` first (`showModal()` on an open dialog throws).
+- Dialog → prop: Escape closes the dialog without React knowing. The `close` event
+  calls `onClose()` so the parent sets `open` to false.
+- Without the second part, the parent still thinks it's open, `setOpen(true)` changes
+  nothing, and the modal can never open again. My test presses Escape, then opens it again.
+- Tailwind's reset removes the browser's centring margin, so the dialog needs `m-auto`.
+
+**Testing `<dialog>`:** jsdom has no `showModal()`, `close()` or Escape behaviour.
+`jest.setup.ts` adds a small stand-in. So Jest tests check my wiring; the real focus
+trap must be checked in a browser (and later in Playwright).
+
+**Live regions (Toast):**
+- A live region (`role="status"` or `role="alert"`) tells screen readers "read changes
+  in here out loud". `status` = polite (waits for a pause). `alert` = interrupts.
+- The region must be in the page BEFORE the message arrives. A region added together
+  with its text is often not read. So both toast regions are always rendered, empty.
+- `role="status"` and `role="alert"` default to `aria-atomic="true"`: read the WHOLE
+  region on any change. With two toasts, the old one is read again. `aria-atomic="false"`
+  reads only the new one.
+- Focus never moves to a toast. It pauses while hovered or focused (WCAG 2.2.1),
+  and important errors still go next to the form field.
+
+**Form ids:** `useId()` instead of `id={name}`. Hidden pages stay in the DOM (`<Activity>`),
+so the login and sign-up pages both had `id="email"`.
+
+**Tests that prove something:** I broke the code on purpose to check each important test
+fails. The first re-render test used `<Profiler>`, and it passed even when the bug was
+there: Profiler didn't report the re-render. A plain `jest.fn()` called during render
+caught it. Lesson: a test that never failed hasn't proved anything yet.
+
+**Interview lines:**
+- "I used the native dialog with showModal(), so the browser gives me the focus trap,
+  Escape and focus return."
+- "A live region has to exist before its content changes, so the toast container is
+  always rendered, even when empty."
+- "The context holds a stable function, not changing state, so the components that use
+  it don't re-render."
