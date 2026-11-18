@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { EventCard } from "@/components/EventCard";
+import { Button } from "@/components/ui/Button";
 import {
   daysUntil,
   groupByMonth,
@@ -104,18 +105,17 @@ export function EventFeed({
 
       {cursor && (
         <div className="mt-10 flex justify-center">
-          <button
-            type="button"
+          <Button
+            variant="secondary"
             onClick={loadMore}
             disabled={status === "loading"}
-            className="rounded-full border border-ink px-7 py-3 font-semibold text-ink hover:bg-ink hover:text-surface disabled:opacity-60"
           >
             {status === "loading"
               ? "Loading…"
               : status === "error"
                 ? "Try again"
                 : "Load more"}
-          </button>
+          </Button>
         </div>
       )}
     </div>

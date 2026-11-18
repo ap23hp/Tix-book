@@ -3,6 +3,7 @@
 import { useLayoutEffect, useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { FormField } from "@/components/FormField";
+import { Button } from "@/components/ui/Button";
 import { postJson, type FieldErrors } from "@/lib/client-api";
 
 const CATEGORIES = ["Comedy", "Music", "Business", "Workshops"];
@@ -263,13 +264,9 @@ export function CreateEventForm() {
         />
       </div>
 
-      <button
-        type="submit"
-        disabled={pending}
-        className="rounded-full bg-accent px-7 py-3 font-semibold text-surface hover:bg-accent-hover disabled:opacity-60"
-      >
+      <Button type="submit" disabled={pending}>
         {pending ? "Creating event…" : "Create event"}
-      </button>
+      </Button>
     </form>
   );
 }

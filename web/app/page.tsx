@@ -4,6 +4,7 @@ import { EventFeed } from "@/components/EventFeed";
 import { EventFilters } from "@/components/EventFilters";
 import { EventListSkeleton } from "@/components/Skeletons";
 import { EmptyTicket } from "@/components/Illustrations";
+import { buttonClass } from "@/components/ui/Button";
 import { getEvents } from "@/lib/api";
 import { readFilters, toQueryString } from "@/lib/events";
 import { display } from "@/lib/ui";
@@ -80,10 +81,7 @@ function NoMatches() {
       <p className="mt-2 max-w-sm text-ink-soft">
         Try a different word, or remove a filter.
       </p>
-      <Link
-        href="/"
-        className="mt-6 rounded-full bg-accent px-7 py-3 font-semibold text-surface hover:bg-accent-hover"
-      >
+      <Link href="/" className={buttonClass({ className: "mt-6" })}>
         Show all events
       </Link>
     </div>
