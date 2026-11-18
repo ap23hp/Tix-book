@@ -8,6 +8,7 @@ import {
   toQueryString,
   type EventFilters as Filters,
 } from "@/lib/events";
+import { Input } from "@/components/ui/Input";
 
 const fieldClass =
   "rounded-lg border border-line bg-surface px-4 py-3 text-ink";
@@ -64,20 +65,14 @@ export function EventFilters({ initial }: { initial: Filters }) {
       onSubmit={(event) => event.preventDefault()}
       className="mt-8 grid gap-4 sm:grid-cols-[1fr_auto_auto_auto] sm:items-end"
     >
-      <div className="flex flex-col gap-1.5">
-        <label htmlFor="filter-q" className="text-sm font-semibold text-ink">
-          Search events
-        </label>
-        <input
-          id="filter-q"
-          type="search"
-          value={q}
-          onChange={(event) => setQ(event.target.value)}
-          placeholder="Comedy, jazz, workshop…"
-          maxLength={100}
-          className={fieldClass}
-        />
-      </div>
+      <Input
+        label="Search events"
+        type="search"
+        value={q}
+        onChange={(event) => setQ(event.target.value)}
+        placeholder="Comedy, jazz, workshop…"
+        maxLength={100}
+      />
 
       <div className="flex flex-col gap-1.5">
         <label

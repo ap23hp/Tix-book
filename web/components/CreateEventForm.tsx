@@ -2,8 +2,8 @@
 
 import { useLayoutEffect, useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import { FormField } from "@/components/FormField";
 import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
 import { postJson, type FieldErrors } from "@/lib/client-api";
 
 const CATEGORIES = ["Comedy", "Music", "Business", "Workshops"];
@@ -127,7 +127,7 @@ export function CreateEventForm() {
         </p>
       )}
 
-      <FormField
+      <Input
         label="Title"
         name="title"
         required
@@ -201,13 +201,13 @@ export function CreateEventForm() {
 
       {format === "IN_PERSON" ? (
         <>
-          <FormField
+          <Input
             label="Venue name"
             name="venueName"
             required
             error={fieldErrors.venueName}
           />
-          <FormField
+          <Input
             label="Venue address"
             name="venueAddress"
             required
@@ -215,7 +215,7 @@ export function CreateEventForm() {
           />
         </>
       ) : (
-        <FormField
+        <Input
           label="Meeting link"
           name="meetingLink"
           type="url"
@@ -226,14 +226,14 @@ export function CreateEventForm() {
       )}
 
       <div className="grid gap-5 sm:grid-cols-2">
-        <FormField
+        <Input
           label="Starts"
           name="startsAt"
           type="datetime-local"
           required
           error={fieldErrors.startsAt}
         />
-        <FormField
+        <Input
           label="Ends"
           name="endsAt"
           type="datetime-local"
@@ -243,7 +243,7 @@ export function CreateEventForm() {
       </div>
 
       <div className="grid gap-5 sm:grid-cols-2">
-        <FormField
+        <Input
           label="Price (£, 0 for free)"
           name="price"
           type="number"
@@ -252,7 +252,7 @@ export function CreateEventForm() {
           required
           error={fieldErrors.pricePence}
         />
-        <FormField
+        <Input
           label="Seats"
           name="seatLimit"
           type="number"
