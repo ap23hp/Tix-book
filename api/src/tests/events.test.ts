@@ -166,7 +166,7 @@ describe("GET /api/v1/events — pagination, search and filters", () => {
 describe("GET /api/v1/events/:id", () => {
   it("returns one event with seatsLeft", async () => {
     const list = await request(app).get("/api/v1/events");
-       const firstEvent = list.body.events[0];
+    const firstEvent = list.body.events[0];
 
     const response = await request(app).get(`/api/v1/events/${firstEvent.id}`);
 
@@ -235,6 +235,31 @@ describe("POST /api/v1/events", () => {
     const fields = response.body.details.map((d: { field: string }) => d.field);
     expect(fields).toContain("title");
     expect(fields).toContain("pricePence");
+  });
+
+  it("returns 400 when fields break the rules between them", async () => {
+    const send = (body: object) =>
+      request(app)
+        .post("/api/v1/events")
+        .set("Cookie", organiserCookie)
+        .send({ ...validEvent, ...body });
+    const fieldsOf = (response: request.Response) =>
+      response.body.details.map((d: { field: string }) => d.field);
+
+    // Ends before it starts
+    const backwards = await send({ endsAt: "2027-06-01T17:00:00.000Z" });
+    expect(backwards.status).toBe(400);
+    expect(fieldsOf(backwards)).toContain("endsAt");
+
+    // In person, but no venue
+    const noVenue = await send({ format: "IN_PERSON" });
+    expect(noVenue.status).toBe(400);
+    expect(fieldsOf(noVenue)).toContain("venueName");
+
+    // Published online, but no meeting link
+    const noLink = await send({ status: "PUBLISHED" });
+    expect(noLink.status).toBe(400);
+    expect(fieldsOf(noLink)).toContain("meetingLink");
   });
 
   it("creates the event for the logged-in organiser, ignoring organiserId in the body", async () => {
