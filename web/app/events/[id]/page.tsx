@@ -1,6 +1,7 @@
 import { Suspense, type ReactNode } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { BookingPanel } from "@/components/BookingPanel";
 import { CoverArt } from "@/components/CoverArt";
 import { getEvent } from "@/lib/api";
 import {
@@ -17,7 +18,7 @@ export default function EventPage({ params }: PageProps<"/events/[id]">) {
       <Link href="/" className={`text-ink-muted hover:text-ink ${label}`}>
         <span aria-hidden="true">← </span>All events
       </Link>
-          <Suspense fallback={<EventDetailSkeleton />}>
+      <Suspense fallback={<EventDetailSkeleton />}>
         <EventDetails params={params} />
       </Suspense>
     </div>
@@ -142,13 +143,13 @@ async function EventDetails({ params }: { params: Promise<{ id: string }> }) {
                 />
               </div>
 
-              <button
-                type="button"
-                disabled
-                className="mt-5 w-full rounded-full bg-line py-3 font-semibold text-ink-muted"
-              >
-                {soldOut ? "Sold out" : "Booking opens soon"}
-              </button>
+              {/* Client Component: the dialog to choose seats and book */}
+              <BookingPanel
+                eventId={event.id}
+                eventTitle={event.title}
+                pricePence={event.pricePence}
+                seatsLeft={event.seatsLeft}
+              />
             </div>
 
             <div
