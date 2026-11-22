@@ -132,6 +132,32 @@ describe("BookingPanel", () => {
     expect(push).not.toHaveBeenCalled();
   });
 
+  it("keeps the message on screen when the refresh shows the event is now sold out", async () => {
+    mockFetchOnce(409, { error: "Sold out" });
+    const { rerender } = renderPanel({ seatsLeft: 1 });
+    openAndSubmit();
+    await screen.findByRole("alert");
+
+    // router.refresh() brings the new seat count: 0 left
+    rerender(
+      <BookingPanel
+        eventId="e1"
+        eventTitle="Jazz night"
+        pricePence={1200}
+        seatsLeft={0}
+      />,
+    );
+
+    // The dialog and its explanation are still there...
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Sorry, someone else just got the last seats.",
+    );
+    expect(document.querySelector("dialog")?.open).toBe(true);
+    // ...and after closing it, the page says Sold out
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.getByRole("button", { name: "Sold out" })).toBeDisabled();
+  });
+
   it("passes on 'only N left'", async () => {
     mockFetchOnce(409, { error: "Only 1 seat is left" });
     renderPanel();
