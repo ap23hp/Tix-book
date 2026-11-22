@@ -94,6 +94,10 @@ export function EventFilters({ initial }: { initial: Filters }) {
         options={FORMAT_OPTIONS}
       />
 
+      {/* With no filters, Clear is hidden. From sm up it stays "invisible"
+          (keeps its space), so the row doesn't jump when it appears. On a
+          phone the fields are stacked and an invisible button would leave an
+          empty gap, so there it's removed from the layout instead. */}
       <button
         type="button"
         onClick={() => {
@@ -102,7 +106,7 @@ export function EventFilters({ initial }: { initial: Filters }) {
           setFormat("");
         }}
         disabled={!hasFilters}
-        className="rounded-full px-5 py-3 text-sm font-semibold text-ink-soft underline underline-offset-4 hover:text-ink disabled:invisible"
+        className="rounded-full px-5 py-3 text-sm font-semibold text-ink-soft underline underline-offset-4 hover:text-ink disabled:invisible max-sm:disabled:hidden"
       >
         Clear
       </button>
