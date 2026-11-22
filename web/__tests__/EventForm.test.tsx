@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { CreateEventForm } from "@/components/CreateEventForm";
+import { EventForm } from "@/components/EventForm";
 
 const push = jest.fn();
 jest.mock("next/navigation", () => ({
@@ -37,10 +37,10 @@ function sentBody() {
 
 beforeEach(() => jest.clearAllMocks());
 
-describe("CreateEventForm", () => {
+describe("EventForm", () => {
   it("sends price in pence, dates as ISO strings, and publishes", async () => {
     mockFetch(201, { id: "e1" });
-    render(<CreateEventForm />);
+    render(<EventForm />);
     fillInPersonEvent();
     fireEvent.click(screen.getByRole("button", { name: "Create event" }));
 
@@ -65,7 +65,7 @@ describe("CreateEventForm", () => {
   });
 
   it("swaps venue fields for a meeting link when Online is chosen", () => {
-    render(<CreateEventForm />);
+    render(<EventForm />);
     expect(screen.queryByLabelText("Meeting link")).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByLabelText("Online"));
@@ -81,7 +81,7 @@ describe("CreateEventForm", () => {
         { field: "endsAt", message: "End time must be after start time" },
       ],
     });
-    render(<CreateEventForm />);
+    render(<EventForm />);
     fillInPersonEvent();
     fireEvent.click(screen.getByRole("button", { name: "Create event" }));
 
@@ -95,7 +95,7 @@ describe("CreateEventForm", () => {
 
   it("goes to the new event's page after it's created", async () => {
     mockFetch(201, { id: "e1" });
-    render(<CreateEventForm />);
+    render(<EventForm />);
     fillInPersonEvent();
     fireEvent.click(screen.getByRole("button", { name: "Create event" }));
 

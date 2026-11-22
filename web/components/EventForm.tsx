@@ -23,7 +23,7 @@ function textOrUndefined(value: FormDataEntryValue | null): string | undefined {
   return trimmed === "" ? undefined : trimmed;
 }
 
-export function CreateEventForm() {
+export function EventForm() {
   const router = useRouter();
   const [format, setFormat] = useState<"IN_PERSON" | "ONLINE">("IN_PERSON");
   const [message, setMessage] = useState<string | null>(null);
