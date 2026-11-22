@@ -26,6 +26,29 @@ export type EventDetail = EventSummary & {
   seatLimit: number;
   seatsLeft: number;
 };
+export type EventStatus = "DRAFT" | "PUBLISHED" | "CANCELLED";
+
+// The whole event, as its organiser sees it
+// (GET /api/v1/events/mine and /mine/:id): any status, with the meeting link
+export type MyEvent = {
+  id: string;
+  title: string;
+  description: string;
+  category: string;
+  format: EventFormat;
+  status: EventStatus;
+  startsAt: string;
+  endsAt: string;
+  doorsAt: string | null;
+  timezone: string;
+  venueName: string | null;
+  venueAddress: string | null;
+  meetingLink: string | null;
+  pricePence: number;
+  seatLimit: number;
+};
+export type MyEventPage = { events: MyEvent[]; nextCursor: string | null };
+
 export type Role = "ATTENDEE" | "ORGANISER";
 
 // The logged-in user, as returned by GET /api/v1/auth/me

@@ -6,7 +6,7 @@ import type { User } from "@/lib/types";
 const API_URL = process.env.API_URL;
 
 // Must match SESSION_COOKIE in api/src/lib/session.ts
-const SESSION_COOKIE = "session";
+export const SESSION_COOKIE = "session";
 
 // Who is logged in? Runs on the Next.js server, never in the browser.
 // cache() = if the header and a page both ask in the same request, call the API once.
