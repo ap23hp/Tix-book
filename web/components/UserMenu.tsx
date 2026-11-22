@@ -1,10 +1,32 @@
 import Link from "next/link";
+import { unstable_rethrow } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
 import { LogoutButton } from "@/components/LogoutButton";
+import type { User } from "@/lib/types";
 
 // Server Component: reads the cookie, so it must sit inside <Suspense> (see layout.tsx)
 export async function UserMenu() {
-  const user = await getCurrentUser();
+  let user: User | null;
+  try {
+    user = await getCurrentUser();
+  } catch (error) {
+    // Next.js uses thrown errors internally (e.g. cookies() during
+    // prerendering); those must go through, so rethrow them first.
+    unstable_rethrow(error);
+
+    // The API can't be reached (asleep on Render, or down). The header is in
+    // the root layout, where app/error.tsx can't catch errors, so a throw here
+    // would replace the whole page with Next's generic error. Show a plain
+    // link instead; the page itself then shows our "Retry" screen.
+    return (
+      <Link
+        href="/account"
+        className="text-sm font-semibold text-ink hover:underline"
+      >
+        Account
+      </Link>
+    );
+  }
 
   if (!user) {
     return (
