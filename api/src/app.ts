@@ -6,7 +6,13 @@ import { bookingsRouter } from "./routes/bookings.js";
 import type { ErrorRequestHandler } from "express";
 import { blockCrossSiteWrites } from "./middleware/csrf.js";
 import { HttpError } from "./lib/errors.js";
+import { paymentsRouter } from "./routes/payments.js";
 const app = express();
+
+// Stripe webhooks first: they need the raw body for the signature check,
+// so they must come before express.json(). They also skip the CSRF check,
+// which is for browsers; the Stripe signature protects this route instead.
+app.use("/api/v1/payments", paymentsRouter);
 
 app.use(express.json());
 app.use(cookieParser());

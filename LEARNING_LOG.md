@@ -923,3 +923,35 @@ confirmed booking and My tickets: no violations.
   seat' for real, and that test found a bug unit tests couldn't."
 - "When a parent re-renders with new data, a component that returns early can unmount
   things the user is still reading; I only swap what has to change."
+
+## 2026-11-22 — Phase 5a: Stripe Checkout and webhooks
+
+**Stripe Checkout:** the API creates a Checkout Session (price and seats from our database,
+never from the browser) and the browser goes to Stripe's page. Card details never touch our
+servers.
+
+**Webhooks:** Stripe calls our API (`POST /api/v1/payments/webhook`) when the payment
+succeeds. The booking is confirmed there, not when the browser comes back to the success
+URL: anyone can open that URL, and a user can close the tab before it loads.
+
+**Signature check:** Stripe signs each webhook with an HMAC of the exact body bytes. It
+needs the raw body, so the route is mounted before `express.json()`. Removing the check on
+purpose failed the "wrong secret" test.
+
+**Duplicates:** the same event can arrive twice, even at the same moment. An event-id table
+skips repeats, but the real protection is storing the payment id on the booking under the
+event lock (decision 042). With that check removed, the "two copies at once" test failed.
+
+**Paying late (decision 041):** Stripe's page stays open for at least 30 minutes, the hold
+for 5. A late payment is confirmed if the seats are still free, otherwise refunded. The
+refund uses the payment id as Stripe's idempotency key, so retries refund once.
+
+**Mistake on the way:** Windows PowerShell 5.1 saved the migration file with an invisible
+byte-order mark, and Postgres failed with `syntax error at or near "\u{feff}"`. Nothing was
+applied (it failed on the first character); removing the 3 bytes fixed it.
+
+**Interview lines:**
+- "I never trust the redirect: the booking is confirmed by a signed webhook, and the webhook
+  handler is idempotent because Stripe delivers at least once."
+- "A payment can arrive after the seat hold ends; I re-check seats under the same row lock
+  and refund automatically if they're gone."

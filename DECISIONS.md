@@ -519,3 +519,66 @@ Trade-off: the list grows with every expired hold; it isn't grouped into upcomin
 events yet, and there's no paging past 50.
 Revisit if: people keep many bookings (then split upcoming/past and add cursor paging, like
 the event list).
+
+## 041 — Paying after the hold has run out
+Date: 2026-11-22
+Problem: a hold lasts 5 minutes (decision 008), but a Stripe Checkout Session must stay
+open for at least 30 minutes. Someone can pay on Stripe's page after their seats were
+released, maybe to someone else.
+Options: (1) make the hold 30 minutes once checkout starts
+         (2) keep 5 minutes; when a payment arrives late, check again under the event lock:
+             seats still free → confirm, seats gone → refund automatically
+         (3) keep 5 minutes and expire the Stripe session through the API when the hold ends
+Chose: 2. The webhook takes the same event row lock as booking (decision 034), so it can't
+race a new booking for the same seats. The refund is made after the transaction (never
+hold a lock while waiting for Stripe), with the payment's id as the idempotency key.
+Why:
+- 1 blocks seats 6 times longer for people who may never pay, which hurts popular events
+  exactly when it matters.
+- 3 needs something to run when the hold ends: a timer or cron, which Render's free plan
+  can't do reliably (decision 035). And it still races a payment already in flight.
+- Most late payments are a few seconds late, with seats still free: confirming them is
+  what the customer expects.
+Also refunded: a second payment for a booking that is already paid (two Stripe tabs), and
+a payment for an event that was cancelled or has started.
+Trade-off: a customer can occasionally be charged and refunded (the refund takes days to
+reach their account), and Stripe keeps its fee on a refunded payment.
+Revisit if: refunds happen often (then show a clear warning when less than a minute of
+the hold is left, or extend the hold once while on Stripe's page).
+
+## 042 — Handling the same webhook more than once
+Date: 2026-11-22
+Stripe says an event can arrive more than once and in any order.
+Options: (1) a table of handled event ids only
+         (2) only conditional updates (change the booking only from the expected state)
+         (3) both
+Chose: 3. `StripeEvent` stores the id (`evt_...`) after the work succeeded, so a repeat is
+skipped straight away. But two copies can arrive at the same moment, before either is
+recorded, and different events can describe the same payment (`completed` and
+`async_payment_succeeded`). So the booking also stores the payment's id: under the lock,
+"this payment is already on the booking" means it's done.
+Why: the event table is the fast path; the payment id under the lock is what is actually
+safe. Breaking the payment-id check on purpose failed the "two copies at once" test even
+though the event table was still there.
+The id is recorded only after the work succeeds: if anything throws (e.g. the refund call
+times out), we answer 500, Stripe retries with backoff, and the work runs again. Every
+step is safe to repeat.
+Trade-off: one more table that grows by one row per webhook (tiny; can be cleaned after
+30 days, as Stripe stops retrying after 3).
+
+## 043 — Calling Stripe: timeouts, retries and a swap-in point for tests
+Date: 2026-11-22
+Chose:
+- Stripe client timeout 10 s (default 80 s) and 2 network retries (default 1). The user is
+  waiting after pressing "Pay"; 80 s is longer than anyone waits. The SDK adds an
+  idempotency key to retried POSTs, so a retry can't create a second session.
+- Every network call to Stripe lives in one object (`stripeGateway` in `lib/stripe.ts`).
+  Tests replace its functions, so the suite never calls Stripe and runs without keys.
+  Signature checks are NOT replaced: tests sign webhooks with Stripe's own
+  `generateTestHeaderString`, so the real verification runs.
+Options for tests: (1) Jest module mocks (2) Stripe's test API over the network
+(3) a small object to swap
+Why 3: Jest module mocks with ESM need `unstable_mockModule` and dynamic imports in every
+test file; real Stripe calls would make tests slow, flaky and need a secret in CI.
+Trade-off: the fake returns only the fields we use, so a change in Stripe's response shape
+wouldn't be caught by unit tests (the end-to-end check with Stripe's test mode covers that).

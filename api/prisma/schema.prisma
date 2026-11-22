@@ -79,22 +79,33 @@ enum BookingStatus {
 }
 
 model Booking {
-  id              String        @id @default(uuid())
-  seats           Int
-  status          BookingStatus @default(HELD)
-  unitPricePence  Int
-  holdExpiresAt   DateTime?
-  reference       String        @unique
-  stripeSessionId String?       @unique
-  idempotencyKey  String        @unique
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
+  id                    String        @id @default(uuid())
+  seats                 Int
+  status                BookingStatus @default(HELD)
+  unitPricePence        Int
+  holdExpiresAt         DateTime?
+  reference             String        @unique
+  stripeSessionId       String?       @unique
+  // The payment that paid for this booking (set by the Stripe webhook).
+  // Refunds are made against it, so it's unique: one payment, one booking.
+  stripePaymentIntentId String?       @unique
+  idempotencyKey        String        @unique
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
 
   userId String
   user   User   @relation(fields: [userId], references: [id])
 
   eventId String
   event   Event  @relation(fields: [eventId], references: [id])
+}
+
+// Stripe webhook events we have finished handling. Stripe may deliver the same
+// event more than once; the id (evt_...) lets us skip copies (decision 042).
+model StripeEvent {
+  id          String   @id
+  type        String
+  processedAt DateTime @default(now())
 }
 
 model Session {
