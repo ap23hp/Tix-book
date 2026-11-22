@@ -61,3 +61,8 @@ export async function getBooking(id: string): Promise<Booking | null> {
     throw error;
   }
 }
+
+// My bookings, newest first (the API returns up to 50)
+export function getMyBookings() {
+  return fetchAsUser<{ bookings: Booking[] }>("/api/v1/bookings/mine");
+}
