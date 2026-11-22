@@ -1,5 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
+import { createEvent, signUp } from "./helpers";
 
 // Automated accessibility checks with axe (the engine behind axe DevTools)
 // against WCAG 2.2 A and AA. Automated tools find only part of the problems,
@@ -133,6 +134,60 @@ test.describe("logged in as an organiser", () => {
     await expect(
       page.getByText("E2E Organiser", { exact: true }),
     ).toBeVisible();
+    await expectNoAxeViolations(page);
+  });
+});
+
+test.describe("booking pages (logged in as an attendee)", () => {
+  let eventId = "";
+
+  // An organiser's paid event, and this browser logged in as an attendee
+  test.beforeEach(async ({ page, request }) => {
+    await signUp(request, "ORGANISER");
+    eventId = await createEvent(request, {
+      title: "E2E accessibility booking",
+      seatLimit: 10,
+      pricePence: 900,
+    });
+    await signUp(page.request, "ATTENDEE");
+  });
+
+  // Book 1 seat through the dialog and land on the booking page
+  async function holdOneSeat(page: Page) {
+    await page.goto(`/events/${eventId}`);
+    await page.getByRole("button", { name: "Book tickets" }).click();
+    await page.getByRole("button", { name: "Hold seats" }).click();
+    await expect(page.getByRole("timer")).toBeVisible();
+  }
+
+  test("booking dialog", async ({ page }) => {
+    await page.goto(`/events/${eventId}`);
+    await page.getByRole("button", { name: "Book tickets" }).click();
+    await expect(
+      page.getByRole("dialog", { name: "Book tickets" }),
+    ).toBeVisible();
+    await expectNoAxeViolations(page);
+  });
+
+  test("held booking with the countdown, then confirmed", async ({ page }) => {
+    await holdOneSeat(page);
+    await expectNoAxeViolations(page);
+
+    await page.getByRole("button", { name: "Confirm booking" }).click();
+    await expect(page.getByText("You're going!")).toBeVisible();
+    await expectNoAxeViolations(page);
+  });
+
+  test("my tickets, empty and with a ticket", async ({ page }) => {
+    await openAndWait(page, "/my-tickets", "My tickets");
+    await expect(
+      page.getByText("You haven't booked anything yet."),
+    ).toBeVisible();
+    await expectNoAxeViolations(page);
+
+    await holdOneSeat(page);
+    await openAndWait(page, "/my-tickets", "My tickets");
+    await expect(page.getByRole("article").first()).toBeVisible();
     await expectNoAxeViolations(page);
   });
 });

@@ -504,3 +504,18 @@ Details: the idempotency key is made when the dialog opens and reused for every 
 that dialog (decision 010). Dates on the booking page are formatted on the server only.
 Trade-off: one more page and a navigation between choosing seats and confirming.
 Revisit if: payments (phase 5) move confirmation to Stripe's checkout page.
+
+## 040 — My tickets: every booking, newest first
+Date: 2026-11-23
+Options: (1) only confirmed bookings (the "real" tickets)
+         (2) every booking with its status (held, confirmed, expired), newest first
+Chose: 2, up to 50 (the API's limit), expired and cancelled ones dimmed.
+Why:
+- A running hold must be easy to find again (the countdown is still going), and an
+  expired hold explains itself ("why don't I have a ticket?").
+- Newest first matches what people look for: the thing they just booked.
+- Everyone gets the "My tickets" link, because anyone can book (decision 037).
+Trade-off: the list grows with every expired hold; it isn't grouped into upcoming and past
+events yet, and there's no paging past 50.
+Revisit if: people keep many bookings (then split upcoming/past and add cursor paging, like
+the event list).

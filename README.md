@@ -25,7 +25,10 @@ An event and ticket booking app. Organisers publish events; attendees browse the
 - **Accessibility:** semantic HTML, skip link, visible focus ring, keyboard-only use checked, WCAG AA contrast, reduced motion, axe checks with no violations.
 - **Responsive:** checked at phone (375px), tablet (768px) and desktop (1280px).
 
-Booking itself (seat holds, payments, tickets and "My tickets") is phase 4 and 5.
+- **Booking:** choose seats, and they're held for 5 minutes with a countdown (from the server's clock) while you confirm; free events are booked straight away. The same seat is never sold twice: each booking locks the event row in Postgres, and 20 simultaneous requests for 5 seats give exactly 5 bookings. Double clicks and retries are one booking (idempotency keys). Clear messages when a hold expires or someone else gets the last seats.
+- **My tickets:** every booking with its status, reference and a link to the ticket.
+
+Payments come in phase 5: until then "Confirm booking" stands in for paying.
 
 ## Tech stack
 
@@ -108,8 +111,8 @@ Tests:
 | 1 | Foundations: schema, API, event pages, deploy | ✅ Done |
 | 2 | Auth and security: login, roles, OAuth, CSRF | ✅ Done |
 | 3 | Search, pagination, my events and editing, UI kit, accessibility, end-to-end tests | ✅ Done |
-| 4 | **Booking and concurrency:** 5-minute seat holds, locking, idempotency, "My tickets" | Next |
-| 5 | Payments with Stripe (test mode) and webhooks | Planned |
+| 4 | **Booking and concurrency:** 5-minute seat holds, locking, idempotency, "My tickets" | ✅ Done |
+| 5 | Payments with Stripe (test mode) and webhooks | Next |
 | 6 | Background jobs: confirmation and reminder emails, retries | Planned |
 | 7 | Performance: indexes, caching, rate limiting, Core Web Vitals | Planned |
 | 8 | Docker, CI/CD, monitoring | Planned |

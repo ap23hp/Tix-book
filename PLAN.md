@@ -155,16 +155,16 @@ Explain test: how React re-renders, useEffect cleanup, pagination types, transac
 **Goal:** the hard problem. No double bookings, holds that expire.
 
 Tasks
-- [ ] Hold a seat for 5 minutes (booking status: held → confirmed / expired)
-- [ ] Prevent double booking: try optimistic locking, then pessimistic locking (`SELECT ... FOR UPDATE`), log the trade-off
-- [ ] Idempotency: the same booking request sent twice creates one booking
-- [ ] Cron job to release expired holds
-- [ ] Countdown timer on the frontend (watch for stale closures and cleanup)
-- [ ] Booking flow UI: "Book" button → seat held screen → clear message when the hold expires
-- [ ] Clear "sold out" and "someone else got the last seat" states
-- [ ] "My tickets" page: the attendee's bookings, with status (moved from phase 3, decision 033)
-- [ ] Deliberately cause and observe a deadlock, then explain how to avoid it
-- [ ] Test: many parallel booking requests for the last seats → exactly the right number succeed
+- [x] Hold a seat for 5 minutes (booking status: held → confirmed / expired)
+- [x] Prevent double booking: try optimistic locking, then pessimistic locking (`SELECT ... FOR UPDATE`), log the trade-off
+- [x] Idempotency: the same booking request sent twice creates one booking
+- [x] Release expired holds: lazy expiry instead of a cron job (Render sleeps; decision 035)
+- [x] Countdown timer on the frontend (watch for stale closures and cleanup)
+- [x] Booking flow UI: "Book" button → seat held screen → clear message when the hold expires
+- [x] Clear "sold out" and "someone else got the last seat" states
+- [x] "My tickets" page: the attendee's bookings, with status (moved from phase 3, decision 033)
+- [x] Deliberately cause and observe a deadlock, then explain how to avoid it
+- [x] Test: many parallel booking requests for the last seats → exactly the right number succeed
 
 Concepts: race conditions, optimistic vs pessimistic locking, idempotency, seat holds with expiry, cron jobs, deadlocks, event loop (timers)
 Accessibility: countdown announced politely to screen readers (`aria-live`), not every second

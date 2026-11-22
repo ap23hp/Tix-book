@@ -44,6 +44,13 @@ export async function UserMenu() {
   // whitespace-nowrap keeps each item on one line ("My events", not "My / events").
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-2 whitespace-nowrap">
+      {/* Anyone can book (decision 037), so everyone has tickets */}
+      <Link
+        href="/my-tickets"
+        className="text-sm font-semibold text-ink hover:underline"
+      >
+        My tickets
+      </Link>
       {user.role === "ORGANISER" && (
         <Link
           href="/my-events"

@@ -88,19 +88,21 @@ export function BookingPanel({
     setMessage(result.message);
   }
 
-  if (soldOut) {
-    return (
-      <Button disabled className="mt-5 w-full">
-        Sold out
-      </Button>
-    );
-  }
-
   return (
     <>
-      <Button onClick={openDialog} className="mt-5 w-full">
-        {isFree ? "Book free tickets" : "Book tickets"}
-      </Button>
+      {/* Only the button changes when the event is sold out. The dialog
+          always stays: after a 409 the page refreshes to 0 seats left, and
+          removing the dialog then would hide the "someone else got the last
+          seats" message the moment it appears. */}
+      {soldOut ? (
+        <Button disabled className="mt-5 w-full">
+          Sold out
+        </Button>
+      ) : (
+        <Button onClick={openDialog} className="mt-5 w-full">
+          {isFree ? "Book free tickets" : "Book tickets"}
+        </Button>
+      )}
 
       <Modal open={open} onClose={() => setOpen(false)} title="Book tickets">
         <form

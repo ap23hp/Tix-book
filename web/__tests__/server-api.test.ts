@@ -1,6 +1,11 @@
 import { cookies } from "next/headers";
 import { ApiError } from "@/lib/api";
-import { getBooking, getMyEvent, getMyEvents } from "@/lib/server-api";
+import {
+  getBooking,
+  getMyBookings,
+  getMyEvent,
+  getMyEvents,
+} from "@/lib/server-api";
 
 jest.mock("next/headers", () => ({ cookies: jest.fn() }));
 
@@ -79,5 +84,18 @@ describe("getBooking", () => {
     withCookie("abc123");
     mockFetch(404, { error: "Booking not found" });
     await expect(getBooking("b1")).resolves.toBeNull();
+  });
+});
+
+describe("getMyBookings", () => {
+  it("asks for my bookings with the session cookie", async () => {
+    withCookie("abc123");
+    mockFetch(200, { bookings: [] });
+
+    await expect(getMyBookings()).resolves.toEqual({ bookings: [] });
+    expect(global.fetch).toHaveBeenCalledWith(
+      "http://api.test/api/v1/bookings/mine",
+      expect.objectContaining({ headers: { Cookie: "session=abc123" } }),
+    );
   });
 });

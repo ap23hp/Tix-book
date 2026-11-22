@@ -38,8 +38,28 @@ describe("UserMenu", () => {
     });
     await renderMenu();
     expect(screen.getByRole("link", { name: "My events" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "My tickets" })).toHaveAttribute(
+      "href",
+      "/my-tickets",
+    );
     expect(screen.getByRole("link", { name: "Hi, Apra" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Log out" })).toBeInTheDocument();
+  });
+
+  it("shows an attendee My tickets but not My events", async () => {
+    mockUser.mockResolvedValue({
+      id: "u2",
+      name: "Sam",
+      email: "s@b.com",
+      role: "ATTENDEE",
+    });
+    await renderMenu();
+    expect(
+      screen.getByRole("link", { name: "My tickets" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: "My events" }),
+    ).not.toBeInTheDocument();
   });
 
   it("shows a plain Account link when the API can't be reached, instead of throwing", async () => {
