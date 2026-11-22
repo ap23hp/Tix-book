@@ -432,3 +432,58 @@ describe("POST /api/v1/bookings/:id/confirm", () => {
     expect(stored.status).toBe("HELD");
   });
 });
+
+describe("Many people booking the last seats at the same moment", () => {
+  // Sum of seats the database says are taken for an event
+  async function heldSeats(eventId: string) {
+    const sum = await prisma.booking.aggregate({
+      where: { eventId, status: { in: ["HELD", "CONFIRMED"] } },
+      _sum: { seats: true },
+    });
+    return sum._sum.seats ?? 0;
+  }
+
+  let people: { id: string; cookie: string }[] = [];
+  beforeAll(async () => {
+    people = await Promise.all(
+      [1, 2, 3, 4, 5].map((n) => makeUser(`crowd-${n}`, "ATTENDEE")),
+    );
+  });
+
+  it("20 requests for 5 seats: exactly 5 succeed, nobody oversells", async () => {
+    const event = await makeEvent({ seatLimit: 5 });
+
+    const responses = await Promise.all(
+      Array.from({ length: 20 }, (_, i) =>
+        book(event.id, people[i % people.length]!.cookie, {
+          seats: 1,
+          idempotencyKey: randomUUID(),
+        }),
+      ),
+    );
+
+    const statuses = responses.map((r) => r.status);
+    expect(statuses.filter((s) => s === 201)).toHaveLength(5);
+    expect(statuses.filter((s) => s === 409)).toHaveLength(15);
+    expect(await heldSeats(event.id)).toBe(5);
+  });
+
+  it("10 requests for 2 seats each, 5 seats: exactly 2 succeed (4 seats)", async () => {
+    const event = await makeEvent({ seatLimit: 5 });
+
+    const responses = await Promise.all(
+      Array.from({ length: 10 }, (_, i) =>
+        book(event.id, people[i % people.length]!.cookie, {
+          seats: 2,
+          idempotencyKey: randomUUID(),
+        }),
+      ),
+    );
+
+    expect(responses.filter((r) => r.status === 201)).toHaveLength(2);
+    expect(await heldSeats(event.id)).toBe(4);
+    // The last seat is still there for someone who wants one
+    const page = await request(app).get(`/api/v1/events/${event.id}`);
+    expect(page.body.seatsLeft).toBe(1);
+  });
+});
