@@ -866,3 +866,32 @@ longer than my 500 ms wait). I fixed it by waiting until both held their first l
   once it retries so much it's twice as slow, so I kept the row lock."
 - "Deadlocks come from taking locks in different orders. Postgres detects them and cancels
   one; I avoid them by locking in a fixed order."
+
+## 2026-11-23 — Phase 4c: the booking UI, and an invisible dialog
+
+**Countdown from the server's clock:** the API sends `serverTime`. The countdown starts at
+`holdExpiresAt − serverTime` (the same value on the server and in the browser, so no
+hydration mismatch), then only measures how much time has passed in the browser. A wrong
+clock on the user's computer doesn't matter. The "page loaded at" time lives in a ref, so
+hiding and showing the page (`<Activity>`) doesn't restart it from 5:00.
+
+**Accessible countdown:** `role="timer"` isn't read out every second; a polite status says
+"Less than a minute left" once.
+
+**Idempotency in the UI:** one key per dialog, made when it opens, sent with every try. A
+double click or a retry after a network error is one booking; a new dialog = a new key.
+
+**The bug: "Confirm booking" did nothing.** Next.js hides the page you leave instead of
+removing it. The "Book tickets" dialog was opened with `showModal()` and was still modal on
+the hidden page: 0px tall, invisible, but a modal dialog makes the rest of the document
+inert, so no click reached the new page. Found by checking `dialog.matches(':modal')` and
+`document.elementFromPoint` in the real browser. Fix: the Modal closes its dialog in an
+effect cleanup (Activity runs cleanups when it hides a page), and the booking dialog closes
+before navigating. jsdom tests didn't catch it at first because nothing hid the page; the
+new test wraps the modal in `<Activity>` and hides it.
+
+**Interview lines:**
+- "The countdown uses the server's time and only measures elapsed time locally, so it
+  can't be fooled by the user's clock."
+- "A modal dialog makes everything else inert. With pages kept alive but hidden, a modal
+  left open on the old page blocked the new one; closing it in the effect cleanup fixed it."

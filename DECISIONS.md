@@ -488,3 +488,19 @@ opposite order → Postgres cancels one with error 40P01 ("deadlock detected"). 
 can't deadlock this way because each booking locks exactly one event row; if a future feature
 locks several (a basket), it must lock them in a fixed order (sorted ids), which the second
 test shows avoids it.
+
+## 039 — The booking flow: a page per booking, not only a dialog
+Date: 2026-11-23
+Options: (1) do everything in the dialog on the event page (hold, countdown, confirm)
+         (2) the dialog only chooses seats; the hold lives on its own page `/bookings/[id]`
+Chose: 2.
+Why:
+- A hold lasts 5 minutes: a refresh, the back button or a closed tab must not lose it.
+  With its own URL the booking can always be found again (and "My tickets" links to it).
+- The countdown starts from the server's time (`serverTime` in the response, decision
+  008), so reopening the page shows the right time left, not a fresh 5:00.
+- The confirmed booking is the ticket (decision 004), which needs a page anyway.
+Details: the idempotency key is made when the dialog opens and reused for every try from
+that dialog (decision 010). Dates on the booking page are formatted on the server only.
+Trade-off: one more page and a navigation between choosing seats and confirming.
+Revisit if: payments (phase 5) move confirmation to Stripe's checkout page.
