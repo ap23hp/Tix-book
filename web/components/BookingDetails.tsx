@@ -4,21 +4,14 @@ import { useCallback, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Countdown } from "@/components/Countdown";
-import { Badge, type Tone } from "@/components/ui/Badge";
+import { Badge } from "@/components/ui/Badge";
 import { Button, buttonClass } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { useToast } from "@/components/ui/Toast";
+import { BOOKING_STATUS } from "@/lib/booking-status";
 import { sendJson } from "@/lib/client-api";
 import type { Booking, BookingStatus } from "@/lib/types";
 import { display, label } from "@/lib/ui";
-
-const STATUS: Record<BookingStatus, { label: string; tone: Tone }> = {
-  HELD: { label: "Held", tone: "warning" },
-  CONFIRMED: { label: "Confirmed", tone: "success" },
-  EXPIRED: { label: "Expired", tone: "neutral" },
-  CANCELLED: { label: "Cancelled", tone: "accent" },
-  REFUNDED: { label: "Refunded", tone: "neutral" },
-};
 
 type Props = {
   booking: Booking;
@@ -64,7 +57,7 @@ export function BookingDetails({ booking, labels }: Props) {
     setMessage(result.message);
   }
 
-  const badge = STATUS[status];
+  const badge = BOOKING_STATUS[status];
   const venue =
     event.format === "ONLINE"
       ? "Online"
