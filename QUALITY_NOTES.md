@@ -37,20 +37,16 @@ Testing approach, accessibility checks, known issues and things to review.
   - Unknown route → 404 JSON
 - Automated tests moved to a separate ticket: needs Jest ESM setup, splitting app from listen, and a separate test database so tests don't touch dev data.
 
-## Known gaps (temporary)
-- ⚠️ POST /events takes organiserId from the request body. Insecure: anyone could create events as any organiser. Phase 2: take it from the logged-in user.
-- Cover image is not yet required to publish (decision 007), because there's no image upload yet. Add the rule when uploads exist.
-
 ## API tests
 - 5 tests (Jest + Supertest): /health; events list (published, upcoming, no meetingLink); event detail with seatsLeft; 404 for a missing event; POST invalid → 400 with field errors.
 - Tests currently run against the dev database and only READ data (or fail validation before touching it).
 - To do (follow-up ticket): separate Neon test branch + `.env.test` (and gitignore it); test for a valid POST → 201; draft → 404 test with its own test data.
 
-## Known gaps (temporary)
--  POST /events takes organiserId from the request body. Insecure: anyone could create events as any organiser. Phase 2: take it from the logged-in user.
--  Since the 6 Nov deploy, POST /events is open on the public internet. Every event in GET /events includes `organiserId`, so anyone can copy a valid one and create a PUBLISHED event on the live demo. Decision pending: accept until phase 2, or limit POST in production.
-- `organiserId` is returned in public responses. Review what public endpoints should expose (privacy).
-- Cover image is not yet required to publish (decision 007), because there's no image upload yet. Add the rule when uploads exist
+## Known gaps
+- ✅ Fixed in phase 2: POST /events took `organiserId` from the request body. The organiser now comes from the session, and Zod drops `organiserId` from the body (tested).
+- ✅ Fixed in phase 2: POST /events was open to anyone. It now needs a logged-in organiser (`requireAuth` + `requireRole("ORGANISER")`).
+- Open: `organiserId` is returned in public responses. Review what public endpoints should expose (privacy).
+- Open: cover image is not yet required to publish (decision 007), because there's no image upload yet. Add the rule when uploads exist.
 
 ## Frontend testing (14 Nov 2026)
 - Run: `npm test` in `web/` (Jest + React Testing Library, jsdom).
