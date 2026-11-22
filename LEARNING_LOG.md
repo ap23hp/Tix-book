@@ -676,3 +676,44 @@ caught it. Lesson: a test that never failed hasn't proved anything yet.
   always rendered, even when empty."
 - "The context holds a stable function, not changing state, so the components that use
   it don't re-render."
+
+## 2026-11-22 — My events API, PATCH and IDOR
+
+**IDOR (Insecure Direct Object Reference):** the id comes from the URL, so anyone can
+send any id. If the server only checks "are you logged in as an organiser?", any
+organiser can edit any event just by changing the id. Fix: load the row and compare
+its owner with the session user, every time.
+
+**The order of checks in PATCH:** 401 (who are you?) → 403 (organiser?) → 404 (your
+event?) → 400 (valid data?) → update. Ownership comes before validation, so someone
+else's event never gives away our rules in a 400.
+
+**404, not 403, for someone else's event (decision 032):** a 403 says "it exists".
+The test checks that "not yours" and "unknown id" return exactly the same body.
+
+**Defence in depth:** the update also has `where: { id, organiserId }`. Our Prisma (7.10.1)
+allows a non-unique field next to `id` there (checked in the generated types). If nothing
+matches, it throws `P2025` (Prisma docs). A test runs that on the real database.
+
+**Partial updates (PATCH):**
+- `eventFields.partial()` = every field optional; send only what changed.
+- Rules between fields can't be checked on the patch alone: a new `endsAt` needs the
+  saved `startsAt`. So: merge the saved row with the changes, then check the rules.
+- `null` means "clear this field" (switching to online clears the venue). Missing means
+  "don't change". JSON can't send `undefined`, so `null` is how you clear something.
+- Zod drops unknown fields, so `organiserId` in the body can't move the event.
+
+**Express gotchas:**
+- Route order: `/mine` must be declared before `/:id`, or `/:id` catches it with
+  id = "mine".
+- After middleware, `req.params.id` is typed `string | string[] | undefined`, so the
+  ownership helper checks `typeof id === "string"` at runtime.
+
+**Testing lesson again:** I broke the ownership check and the merged-rules check on purpose.
+Both made tests fail, so the tests really protect them.
+
+**Interview lines:**
+- "IDOR is trusting an id from the client. I load the row and compare its owner with the
+  session user, in one shared function."
+- "For a partial update I merge the patch with the saved row and validate the result,
+  because rules that compare fields need both."

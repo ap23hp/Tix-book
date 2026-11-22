@@ -356,3 +356,25 @@ Trade-off: the provider has to wrap the app, and `useToast()` throws outside it.
 Zustand would avoid the provider and let components pick just the part they need.
 Revisit if: several unrelated pieces of client state need sharing across pages
 (e.g. a seat picker plus a basket), or Context re-renders show up as slow.
+
+## 032 — Another organiser's event: 404, not 403
+Date: 2026-11-22
+Options: (1) 403 "You don't have permission"  (2) 404 "Event not found"
+Chose: 2. `GET /api/v1/events/mine/:id` and `PATCH /api/v1/events/:id` give an
+unknown id and someone else's event exactly the same 404 response. One shared
+function, `findOwnEvent`, does the check for every "my event" route.
+Why:
+- A 403 admits "this event exists, it just isn't yours". For drafts that is a leak:
+  nobody else should know they exist. The public GET /:id already treats drafts as
+  404 (it doesn't reveal hidden events), so this matches.
+- One answer for "missing" and "not yours" means the API never confirms whether an
+  id exists. GitHub does the same for private repositories.
+- Ownership is checked before validation, so another organiser doesn't even get a
+  400 that would show our rules for someone else's event.
+- Defence in depth: the update itself also filters on `organiserId`, so a bug in the
+  check still couldn't change another organiser's row.
+Trade-off: 403 is more precise and easier to debug ("not allowed" is clearer than
+"doesn't exist"), and for published events, which anyone can see, the 404 hides
+nothing. Logs on our side can still record the real reason if needed.
+Revisit if: organisers can share events with co-organisers (then "you can see it but
+can't edit it" becomes a real case, and 403 fits it).
