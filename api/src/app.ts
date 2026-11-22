@@ -2,6 +2,7 @@ import express from "express";
 import { eventsRouter } from "./routes/events.js";
 import cookieParser from "cookie-parser";
 import { authRouter } from "./routes/auth.js";
+import { bookingsRouter } from "./routes/bookings.js";
 import type { ErrorRequestHandler } from "express";
 import { blockCrossSiteWrites } from "./middleware/csrf.js";
 import { HttpError } from "./lib/errors.js";
@@ -16,6 +17,7 @@ app.get("/health", (_req, res) => {
 
 app.use("/api/v1/events", eventsRouter);
 app.use("/api/v1/auth", authRouter);
+app.use("/api/v1/bookings", bookingsRouter);
 
 // Unknown routes → 404 JSON (instead of Express's default HTML page)
 app.use((_req, res) => {

@@ -266,3 +266,96 @@ describe("Idempotency (decision 010)", () => {
     expect(different.status).toBe(422);
   });
 });
+
+describe("GET /api/v1/bookings/:id and /mine", () => {
+  let other = { id: "", cookie: "" };
+  beforeAll(async () => {
+    other = await makeUser("reader-other", "ATTENDEE");
+  });
+
+  it("returns 401 when not logged in", async () => {
+    expect((await request(app).get("/api/v1/bookings/mine")).status).toBe(401);
+  });
+
+  it("returns my booking with the event and the server time", async () => {
+    const event = await makeEvent({ title: "Readable event" });
+    const held = await book(event.id, attendee.cookie, {
+      seats: 1,
+      idempotencyKey: randomUUID(),
+    });
+
+    const response = await request(app)
+      .get(`/api/v1/bookings/${held.body.id}`)
+      .set("Cookie", attendee.cookie);
+
+    expect(response.status).toBe(200);
+    expect(response.body.status).toBe("HELD");
+    expect(response.body.event.title).toBe("Readable event");
+    expect(typeof response.body.serverTime).toBe("string");
+  });
+
+  it("answers someone else's booking exactly like an unknown id (404)", async () => {
+    const event = await makeEvent();
+    const held = await book(event.id, attendee.cookie, {
+      seats: 1,
+      idempotencyKey: randomUUID(),
+    });
+
+    const others = await request(app)
+      .get(`/api/v1/bookings/${held.body.id}`)
+      .set("Cookie", other.cookie);
+    const unknown = await request(app)
+      .get("/api/v1/bookings/not-a-real-id")
+      .set("Cookie", other.cookie);
+
+    expect(others.status).toBe(404);
+    expect(others.body).toEqual(unknown.body);
+  });
+
+  it("reports and saves a hold that ran out as EXPIRED", async () => {
+    const event = await makeEvent();
+    const old = await prisma.booking.create({
+      data: {
+        eventId: event.id,
+        userId: attendee.id,
+        seats: 1,
+        unitPricePence: 1500,
+        status: "HELD",
+        holdExpiresAt: new Date(Date.now() - 1000),
+        reference: `TEST-${runId}-read-expired`,
+        idempotencyKey: randomUUID(),
+      },
+    });
+
+    const response = await request(app)
+      .get(`/api/v1/bookings/${old.id}`)
+      .set("Cookie", attendee.cookie);
+    expect(response.body.status).toBe("EXPIRED");
+    const stored = await prisma.booking.findUniqueOrThrow({
+      where: { id: old.id },
+    });
+    expect(stored.status).toBe("EXPIRED");
+  });
+
+  it("lists only my bookings, newest first", async () => {
+    const event = await makeEvent();
+    const mine = await book(event.id, other.cookie, {
+      seats: 1,
+      idempotencyKey: randomUUID(),
+    });
+    const newer = await book(event.id, other.cookie, {
+      seats: 2,
+      idempotencyKey: randomUUID(),
+    });
+
+    const response = await request(app)
+      .get("/api/v1/bookings/mine")
+      .set("Cookie", other.cookie);
+
+    expect(response.status).toBe(200);
+    expect(response.body.bookings.map((b: { id: string }) => b.id)).toEqual([
+      newer.body.id,
+      mine.body.id,
+    ]);
+  });
+});
