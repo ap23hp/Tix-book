@@ -391,3 +391,68 @@ Why:
 Trade-off: phase 3 ends without the attendee's side of "my pages"; attendees have
 nothing of their own to see until booking exists. Issue #35 and PLAN.md are updated.
 Revisit if: never needed; it's scheduled in phase 4.
+## 034 — Preventing double booking: lock the event row (pessimistic)
+Date: 2026-11-22
+Options: (1) pessimistic: `SELECT ... FOR UPDATE` on the event row, then count and insert
+         (2) optimistic: no lock; check a version at save time and retry on conflict
+         (3) a database constraint alone (can't express "sum of seats ≤ seatLimit")
+         (4) a stored seats-left counter updated atomically (rejected in decision 005)
+Chose: 1. One transaction per booking: lock the event row, mark its expired holds
+EXPIRED, count taken seats with the shared rule (`lib/seats.ts`), then create the
+booking or answer 409.
+Why:
+- Everyone booking an event fights over the same row (high contention). With a lock,
+  requests simply queue for milliseconds; with optimistic locking most of them would
+  fail and retry (measured in phase 4b).
+- Easy to reason about: inside the lock, the count can't change.
+- Tested: 20 simultaneous requests for 5 seats → exactly 5 succeed. With `FOR UPDATE`
+  removed, 10 seats were sold for 5 places.
+Trade-off: raw SQL (Prisma has no FOR UPDATE), and bookings for one event run one at a
+time. Each holds a connection while it waits, so transactions get 10s instead of
+Prisma's 2s/5s defaults. Confirming a hold takes the same lock and reads the clock
+after getting it, so a confirm at the moment a hold expires can't race a new booking.
+Revisit if: one event gets so many bookings per second that the queue is slow (then a
+queue or seat-level rows).
+
+## 035 — Expired holds without a cron job
+Date: 2026-11-22
+Options: (1) a cron job every minute that marks expired holds EXPIRED
+         (2) an in-process timer (setInterval) in the API
+         (3) lazy expiry: decide by time when reading, save the status on the way
+Chose: 3. Correctness never depends on the stored status: seats left already ignores
+holds whose `holdExpiresAt` has passed (decision 005 rule, `takenWhere`). The status is
+saved as EXPIRED whenever a booking is made for that event, a booking is read, a list is
+read, or a confirm fails.
+Why:
+- Render's free plan sleeps after 15 minutes, so an in-process timer stops exactly when
+  nobody is around, and an external cron would need a secret in Render.
+- A cron querying every minute would keep Neon awake 24/7 (~180 compute hours/month, over
+  the free limit, see QUALITY_NOTES).
+- Nothing waits on a status change: there are no "hold expired" emails until phase 6.
+Trade-off: a stored HELD row can stay HELD long after it ran out, so raw database counts
+must use the same rule (`takenWhere`) or the API, never `status = 'HELD'` alone.
+Revisit if: phase 6 sends "your hold expired" emails (then a scheduled job is needed).
+
+## 036 — Confirming a hold before payments exist; free events skip the hold
+Date: 2026-11-22
+Options: (1) wait for Stripe (phase 5) before any booking can be confirmed
+         (2) `POST /api/v1/bookings/:id/confirm` as a stand-in for "payment succeeded"
+Chose: 2, plus: free events are CONFIRMED straight away (decision 008).
+Why: phase 4 can be finished and tested end to end (hold → confirm → ticket), and phase 5
+only has to replace what triggers the confirm (the Stripe webhook) without changing the
+rules: same lock, same expiry check.
+Trade-off: until phase 5, anyone can "pay" for a paid event by pressing Confirm. This is a
+demo app with no real money, so that's acceptable, and it's stated in the UI.
+Revisit if: phase 5 (Stripe) is built; this endpoint then goes away or becomes
+organiser-only.
+
+## 037 — Who can book, and how many seats
+Date: 2026-11-22
+Chose: any logged-in user (attendee or organiser) can book a published event that hasn't
+started, 1 to 10 seats per booking, no limit on bookings per person.
+Why: organisers go to other people's events too, and a per-person limit is a business
+rule nobody has asked for yet. 10 seats stops one request from taking a whole event by
+mistake.
+Trade-off: one person could still hold many seats with several bookings (each held for 5
+minutes); a scalper protection would need limits per user or per event.
+Revisit if: abuse appears, or organisers ask for "max N tickets per person".
