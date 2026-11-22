@@ -1,6 +1,12 @@
 import type { Config } from "jest";
 import nextJest from "next/jest.js";
 
+// Every test run uses London time, whatever the computer is set to, so tests
+// about local times (datetime-local inputs) give the same result everywhere.
+// Set here, before Jest starts its workers: changing process.env.TZ inside a
+// test file does nothing (each file gets its own copy of process.env).
+process.env.TZ = "Europe/London";
+
 const createJestConfig = nextJest({
   // Path to the Next.js app, so next.config.ts and .env files load in tests
   dir: "./",
