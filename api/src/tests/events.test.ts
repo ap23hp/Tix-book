@@ -317,6 +317,166 @@ describe("GET /api/v1/events/mine and /mine/:id", () => {
   });
 });
 
+describe("PATCH /api/v1/events/:id", () => {
+  let ownerCookie = "";
+  let otherCookie = "";
+  let attendeeCookie = "";
+  let ownerId = "";
+  let eventId = "";
+
+  // Runs in order: later tests build on earlier changes
+  beforeAll(async () => {
+    ownerCookie = await logInAs("ORGANISER", "patch-owner");
+    otherCookie = await logInAs("ORGANISER", "patch-other");
+    attendeeCookie = await logInAs("ATTENDEE", "patch-attendee");
+    const me = await request(app)
+      .get("/api/v1/auth/me")
+      .set("Cookie", ownerCookie);
+    ownerId = me.body.id;
+
+    const event = await prisma.event.create({
+      data: {
+        title: "Original title",
+        description: "Created by a test",
+        category: "Comedy",
+        format: "IN_PERSON",
+        venueName: "Hall",
+        venueAddress: "1 Street",
+        status: "DRAFT",
+        startsAt: new Date("2031-07-01T19:00:00Z"),
+        endsAt: new Date("2031-07-01T21:00:00Z"),
+        timezone: "Europe/London",
+        pricePence: 1000,
+        seatLimit: 50,
+        organiserId: ownerId,
+      },
+    });
+    eventId = event.id;
+  });
+
+  const patch = (id: string, cookie: string, body: object) =>
+    request(app).patch(`/api/v1/events/${id}`).set("Cookie", cookie).send(body);
+  const saved = () =>
+    prisma.event.findUniqueOrThrow({ where: { id: eventId } });
+  const fieldsOf = (response: request.Response) =>
+    response.body.details.map((d: { field: string }) => d.field);
+
+  it("returns 401 when not logged in", async () => {
+    const response = await request(app)
+      .patch(`/api/v1/events/${eventId}`)
+      .send({ title: "Nope" });
+    expect(response.status).toBe(401);
+  });
+
+  it("returns 403 for an attendee", async () => {
+    expect(
+      (await patch(eventId, attendeeCookie, { title: "Nope" })).status,
+    ).toBe(403);
+  });
+
+  it("returns 404 for an unknown id", async () => {
+    const response = await patch("not-a-real-id", ownerCookie, {
+      title: "Nope",
+    });
+    expect(response.status).toBe(404);
+    expect(response.body).toEqual({ error: "Event not found" });
+  });
+
+  it("refuses another organiser with the same 404, and changes nothing", async () => {
+    const intruder = await patch(eventId, otherCookie, { title: "Hacked" });
+    const unknown = await patch("not-a-real-id", otherCookie, {
+      title: "Hacked",
+    });
+
+    expect(intruder.status).toBe(404);
+    expect(intruder.body).toEqual(unknown.body);
+    expect((await saved()).title).toBe("Original title");
+  });
+
+  it("checks ownership before validation", async () => {
+    // Invalid data from another organiser: still 404, never a 400 that
+    // would reveal our rules for someone else's event
+    const response = await patch(eventId, otherCookie, { pricePence: -5 });
+    expect(response.status).toBe(404);
+  });
+
+  it("saves only the fields that were sent", async () => {
+    const response = await patch(eventId, ownerCookie, {
+      title: "New title",
+      pricePence: 1500,
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body.title).toBe("New title");
+    const row = await saved();
+    expect(row.title).toBe("New title");
+    expect(row.pricePence).toBe(1500);
+    expect(row.venueName).toBe("Hall"); // not sent, so unchanged
+  });
+
+  it("ignores organiserId in the body", async () => {
+    const other = await request(app)
+      .get("/api/v1/auth/me")
+      .set("Cookie", otherCookie);
+    const response = await patch(eventId, ownerCookie, {
+      organiserId: other.body.id,
+    });
+
+    expect(response.status).toBe(200);
+    expect((await saved()).organiserId).toBe(ownerId);
+  });
+
+  it("checks the rules against the saved event (end before saved start)", async () => {
+    // Only endsAt is sent; it's before the startsAt already saved
+    const response = await patch(eventId, ownerCookie, {
+      endsAt: "2031-07-01T18:00:00.000Z",
+    });
+
+    expect(response.status).toBe(400);
+    expect(fieldsOf(response)).toContain("endsAt");
+  });
+
+  it("won't clear the venue of an in-person event", async () => {
+    const response = await patch(eventId, ownerCookie, { venueName: null });
+    expect(response.status).toBe(400);
+    expect(fieldsOf(response)).toContain("venueName");
+  });
+
+  it("refuses status CANCELLED", async () => {
+    const response = await patch(eventId, ownerCookie, { status: "CANCELLED" });
+    expect(response.status).toBe(400);
+    expect(fieldsOf(response)).toContain("status");
+  });
+
+  it("switches to online and clears the venue with null", async () => {
+    const response = await patch(eventId, ownerCookie, {
+      format: "ONLINE",
+      meetingLink: "https://example.com/meet",
+      venueName: null,
+      venueAddress: null,
+    });
+
+    expect(response.status).toBe(200);
+    const row = await saved();
+    expect(row.format).toBe("ONLINE");
+    expect(row.venueName).toBeNull();
+    expect(row.venueAddress).toBeNull();
+  });
+
+  // Our defence in depth relies on this Prisma behaviour, so check it on the
+  // real database: update() with a non-unique field in `where` that doesn't
+  // match throws P2025 and changes nothing.
+  it("Prisma: update with a wrong organiserId throws P2025 and changes nothing", async () => {
+    await expect(
+      prisma.event.update({
+        where: { id: eventId, organiserId: "someone-else" },
+        data: { title: "Should not save" },
+      }),
+    ).rejects.toMatchObject({ code: "P2025" });
+    expect((await saved()).title).toBe("New title");
+  });
+});
+
 describe("POST /api/v1/events", () => {
   // A valid draft online event (drafts don't appear in the public list)
   const validEvent = {

@@ -23,7 +23,7 @@ export const eventFields = z.object({
 // The fields the cross-field rules look at. null is allowed because the
 // edit route checks "saved event + changes", and the database stores
 // empty optional fields as null.
-type EventRuleInput = {
+export type EventRuleInput = {
   startsAt: Date;
   endsAt: Date;
   format: "IN_PERSON" | "ONLINE";
@@ -67,6 +67,25 @@ export function checkEventRules(
 }
 
 export const createEventSchema = eventFields.superRefine(checkEventRules);
+
+// PATCH /api/v1/events/:id: every field is optional (send only what changed).
+// Optional fields also accept null, meaning "clear it", e.g. switching an
+// event to online clears its venue. status stays DRAFT or PUBLISHED:
+// cancelling needs refunds, so it gets its own route in a later phase.
+export const updateEventSchema = eventFields.partial().extend({
+  doorsAt: z.coerce.date().nullable().optional(),
+  venueName: z.string().trim().min(1).nullable().optional(),
+  venueAddress: z.string().trim().min(1).nullable().optional(),
+  meetingLink: z.string().url().nullable().optional(),
+  coverImageUrl: z.string().url().nullable().optional(),
+});
+
+// The cross-field rules on their own, for "saved event + changes".
+// A partial update can't check them alone: a new endsAt has to be compared
+// with the startsAt that's already saved.
+export const eventRulesSchema = z
+  .custom<EventRuleInput>()
+  .superRefine(checkEventRules);
 
 // GET /api/v1/events?q=&category=&format=&limit=&cursor=
 // Everything comes from the URL, so it arrives as strings.

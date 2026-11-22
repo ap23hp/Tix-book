@@ -2,8 +2,10 @@ import { Router } from "express";
 import { prisma } from "../lib/prisma.js";
 import {
   createEventSchema,
+  eventRulesSchema,
   listEventsQuerySchema,
   myEventsQuerySchema,
+  updateEventSchema,
 } from "../schemas/event.js";
 import { getUser, requireAuth, requireRole } from "../middleware/auth.js";
 import { HttpError, parseOrThrow } from "../lib/errors.js";
@@ -175,3 +177,57 @@ eventsRouter.post(
     res.status(201).json(event);
   },
 );
+
+// PATCH /api/v1/events/:id → edit one of my events (send only what changed)
+// Order: who are you (401) → organiser? (403) → your event? (404) → valid? (400)
+// Ownership is checked before validation, so another organiser can't learn
+// anything about the event, or our rules, from the answer.
+eventsRouter.patch(
+  "/:id",
+  requireAuth,
+  requireRole("ORGANISER"),
+  async (req, res) => {
+    const organiserId = getUser(res).id;
+    const event = await findOwnEvent(req.params.id, organiserId);
+
+    // Unknown fields (organiserId, id…) are dropped by Zod, so an event
+    // can't be moved to another organiser
+    const changes = parseOrThrow(
+      updateEventSchema,
+      req.body,
+      "Invalid event data",
+    );
+
+    // Rules between fields are checked on the result: saved event + changes
+    parseOrThrow(
+      eventRulesSchema,
+      { ...event, ...changes },
+      "Invalid event data",
+    );
+
+    try {
+      const updated = await prisma.event.update({
+        // organiserId here too (defence in depth): even if the check above
+        // had a bug, this can only ever update my own row
+        where: { id: event.id, organiserId },
+        data: changes,
+      });
+      res.status(200).json(updated);
+    } catch (err) {
+      // P2025 = no row matched (e.g. deleted a moment ago)
+      if (isRecordNotFoundError(err)) {
+        throw new HttpError(404, "Event not found");
+      }
+      throw err;
+    }
+  },
+);
+
+function isRecordNotFoundError(err: unknown): boolean {
+  return (
+    typeof err === "object" &&
+    err !== null &&
+    "code" in err &&
+    err.code === "P2025"
+  );
+}
