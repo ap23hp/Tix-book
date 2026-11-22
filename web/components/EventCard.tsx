@@ -47,7 +47,14 @@ export function EventCard({
           <h3 className={`text-display-sm text-ink ${display}`}>
             {event.title}
           </h3>
-          <p className="mt-3 text-sm text-ink-muted">{time}</p>
+          {/* The time zone name ("GMT") comes from the runtime's own time
+              zone data. This card renders on the server and again in the
+              browser, and some browsers name it differently ("GMT+0"), which
+              broke hydration. suppressHydrationWarning keeps the server's
+              text for this one element (React: "the DOM wins"). */}
+          <p className="mt-3 text-sm text-ink-muted" suppressHydrationWarning>
+            {time}
+          </p>
           <p className="text-sm text-ink-muted">
             {isOnline
               ? "Online"
