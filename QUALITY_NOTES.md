@@ -58,3 +58,23 @@ Testing approach, accessibility checks, known issues and things to review.
   EventCard (title, venue, link, Online pill, Free, "Tomorrow").
 - Not covered yet: async pages (list and detail) → Playwright end-to-end in phase 3.
 - Accessibility: all 34 jsx-a11y recommended rules on; `npm run lint` passes.
+
+## End-to-end and accessibility tests (22 Nov 2026)
+- Run: `npm run test:e2e` in `web/` (Playwright, Chromium). It starts the local API and web
+  app, or reuses ones already running. Needs the dev database with the seeded events.
+- `e2e/browse.spec.ts`: open the first event on the list → its page shows the same title,
+  the date and seats left; an unknown id shows "Event not found". Read-only.
+- `e2e/a11y.spec.ts`: axe (WCAG 2.2 A + AA) on 9 pages, including the logged-in organiser
+  pages and the "Discard changes?" dialog. No violations on 22 Nov. It signs up a throwaway
+  `events-test-e2e-…` organiser; the API tests' cleanup deletes it.
+- Manual keyboard pass (22 Nov): logical tab order, visible focus ring everywhere, skip link
+  works, modal traps focus, closes on Escape and returns focus. Nothing to fix.
+- Not in CI yet (phase 8). Automated axe checks find only part of the problems.
+
+## Open questions
+- **Vercel and `?limit=100` (20 Nov 2026), not explained yet.** `GET /api/v1/events?limit=100`
+  through the Vercel rewrite (tix-book.vercel.app) returned events, but the same request to
+  Render directly returned the correct 400 (limit must be 1–50). Possible causes to check:
+  Vercel serving a cached response, the rewrite changing the query string, or an older API
+  deploy behind the rewrite. To investigate: compare the response headers of both requests
+  (cache headers, which deploy answered) and repeat it with a cache-busting parameter.

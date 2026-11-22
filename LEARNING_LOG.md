@@ -764,3 +764,42 @@ but not the edits. Always read `git status` before committing: `RM` / ` M` meant
 - "datetime-local has no time zone; the browser uses its own, so I convert in the
   browser's zone in both directions and test it with a pinned TZ."
 - "I check the focus trap in a real browser, because jsdom doesn't implement dialog."
+
+## 2026-11-22 — Seats left, responsive pass, Playwright and axe
+
+**N+1 queries:** one query for the list, then one more per event = N+1 queries. Instead,
+one `groupBy` adds up the booked seats for every event on the page at once: 2 queries
+in total, whatever the page size.
+
+**One calculation, used everywhere:** `api/src/lib/seats.ts` is the only place that decides
+what "taken" means (confirmed + holds that haven't expired, adding up `seats`). The list
+and the event page both call it, so they can't disagree. A test with a 2-seat booking and
+an expired hold proves it; it fails if expired holds are counted.
+
+**Responsive pass:** I measured each page at 375, 768 and 1280px with a small script
+(is the page wider than the screen? which elements stick out?). Found two problems:
+- the organiser header was too wide on a phone (sideways scrolling, "Log out" cut off).
+  Fix: `flex-wrap` on the header, `whitespace-nowrap` on the items, `truncate` on the name.
+- an invisible "Clear" button left an empty gap on phones. `visibility: hidden` keeps the
+  space (good on desktop: no jump), `display: none` removes it (better on a phone).
+
+**Playwright:** a real browser against the real app. `webServer` starts (or reuses) the
+API and the web app. Lessons:
+- Strict mode: a locator must match exactly one element, and hidden elements count.
+  The page I came from is still in the DOM (`<Activity>`), so I scope locators
+  (e.g. inside the "Tickets" box).
+- A cold dev server compiles each page on the first visit, so assertions get 15 seconds.
+
+**axe:** the engine behind axe DevTools, run by `@axe-core/playwright` on 9 pages
+against WCAG 2.2 A + AA. No violations. To prove the check works, I broke a label on
+purpose: axe reported "label (critical): Form elements must have labels".
+Automated checks only find part of the problems, so I also did a keyboard pass by hand.
+
+**Debugging my own tools:** twice my measurements were wrong, not the app: a script
+measured a hidden copy of the page, and a focus recorder missed events. Lesson: when a
+result looks surprising, check the measurement before "fixing" the code.
+
+**Interview lines:**
+- "N+1 means one query per row. I load the counts for the whole page in one grouped query."
+- "I keep one function for seats left, so two pages can never show different numbers."
+- "axe finds the mechanical problems; a keyboard pass finds the rest."
