@@ -24,7 +24,10 @@ export default defineConfig({
   // already running (e.g. your own `npm run dev`).
   webServer: [
     {
-      command: "npm run dev",
+      // Plain tsx, not `npm run dev` (tsx watch): when started by another
+      // program (Playwright, the editor's launcher), `tsx watch` printed its
+      // banner and never started the server. Tests don't need restart-on-save.
+      command: "npx tsx src/index.ts",
       cwd: "../api",
       url: "http://localhost:4000/health",
       reuseExistingServer: true,
