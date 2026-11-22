@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "@jest/globals";
 import { prisma } from "../lib/prisma.js";
 import { holdSeatsOptimistic } from "../lab/optimistic-booking.js";
+import { lockEvent } from "../lib/bookings.js";
 
 // Phase 4b lab: the optimistic version must be just as safe as the
 // pessimistic one the API uses (decision 034, compared in decision 038).
@@ -106,5 +107,69 @@ describe("Optimistic locking (lab)", () => {
       (r) => (r as PromiseFulfilledResult<{ attempts: number }>).value.attempts,
     );
     expect(Math.max(...attempts)).toBeGreaterThan(1);
+  });
+});
+
+describe("Deadlock (caused on purpose)", () => {
+  // Two transactions, each locks one event, waits until the other has its
+  // first lock too, then asks for the other event's lock.
+  // waitForOther: hold the first lock until the other transaction holds its
+  // first lock too (needed to cause the deadlock: starting a transaction
+  // over the network takes a while, so without waiting one simply finishes
+  // before the other begins).
+  async function lockBoth(
+    firstOrder: [string, string],
+    secondOrder: [string, string],
+    waitForOther: boolean,
+  ) {
+    let holding = 0;
+    let bothHolding!: () => void;
+    const ready = new Promise<void>((resolve) => (bothHolding = resolve));
+
+    const run = ([first, second]: [string, string]) =>
+      prisma.$transaction(
+        async (tx) => {
+          await lockEvent(tx, first);
+          holding += 1;
+          if (holding === 2) bothHolding();
+          if (waitForOther) {
+            // Safety limit so a broken test fails instead of hanging
+            await Promise.race([
+              ready,
+              new Promise((r) => setTimeout(r, 8_000)),
+            ]);
+          }
+          await lockEvent(tx, second);
+          return "finished";
+        },
+        { maxWait: 10_000, timeout: 20_000 },
+      );
+
+    return Promise.allSettled([run(firstOrder), run(secondOrder)]);
+  }
+
+  it("opposite order: Postgres detects the deadlock and cancels one transaction", async () => {
+    const a = await makeEvent(5);
+    const b = await makeEvent(5);
+
+    const results = await lockBoth([a.id, b.id], [b.id, a.id], true);
+
+    const finished = results.filter((r) => r.status === "fulfilled");
+    const cancelled = results.filter((r) => r.status === "rejected");
+    expect(finished).toHaveLength(1);
+    expect(cancelled).toHaveLength(1);
+    expect(String((cancelled[0] as PromiseRejectedResult).reason)).toMatch(
+      /deadlock/i,
+    );
+  });
+
+  it("same order (sorted ids): no deadlock, both finish", async () => {
+    const a = await makeEvent(5);
+    const b = await makeEvent(5);
+    const sorted = [a.id, b.id].sort() as [string, string];
+
+    const results = await lockBoth(sorted, sorted, false);
+
+    expect(results.map((r) => r.status)).toEqual(["fulfilled", "fulfilled"]);
   });
 });
