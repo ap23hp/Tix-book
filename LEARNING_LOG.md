@@ -803,3 +803,38 @@ result looks surprising, check the measurement before "fixing" the code.
 - "N+1 means one query per row. I load the counts for the whole page in one grouped query."
 - "I keep one function for seats left, so two pages can never show different numbers."
 - "axe finds the mechanical problems; a keyboard pass finds the rest."
+
+## 2026-11-22 — Phase 4a: holding seats without selling them twice
+
+**The race condition, for real:** without a lock, 10 people asking for 2 seats each at the
+same moment on a 5-seat event got 5 bookings: 10 seats sold for 5 places. Every request
+counted "5 left" before any of them had saved anything.
+
+**The fix: `SELECT ... FOR UPDATE` on the event row** (decision 034). The first booking
+locks the row; the others wait in a queue until it commits, then count again. Inside the
+lock the count can't change. Prisma has no FOR UPDATE, so it's raw SQL with a tagged
+template: `${eventId}` is sent as a parameter, never pasted into the SQL (no injection).
+
+**Read the clock after the lock:** bookings and confirms for one event take the same lock
+and only then read `now`, so time moves forward in the order they ran. Otherwise a confirm
+could count a hold as "still running" while a new booking already counted it as "expired".
+
+**Idempotency in two layers:** first "have I seen this key?" (fast path), then the
+database's unique constraint for the case where two identical requests arrive at the same
+moment and both pass the check. The loser catches `P2002` and returns the winner's booking.
+Same key, different request → 422 (a client bug).
+
+**No cron job** (decision 035): seats left already ignores holds that ran out, so the
+stored status is only tidied up when someone looks (lazy expiry). Render sleeps anyway,
+and a cron every minute would keep Neon awake all month.
+
+**Transactions and the connection pool:** each waiting booking holds a database connection
+(pool of 10). Prisma's defaults (2s to start, 5s to run) were too short for 20 bookings at
+once, so booking transactions get 10s.
+
+**Interview lines:**
+- "I lock the event row with SELECT FOR UPDATE, count inside the lock, and insert, so two
+  requests can't both see the last seat. A test with 20 parallel requests proves it, and
+  fails when I remove the lock."
+- "Idempotency: a key from the client plus a unique constraint, so retries and double
+  clicks give one booking even when they arrive at the same moment."

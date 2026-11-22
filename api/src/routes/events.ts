@@ -11,6 +11,9 @@ import { getUser, requireAuth, requireRole } from "../middleware/auth.js";
 import { HttpError, parseOrThrow } from "../lib/errors.js";
 import { decodeCursor, encodeCursor } from "../lib/cursor.js";
 import { withSeatsLeft } from "../lib/seats.js";
+import { holdSeats } from "../lib/bookings.js";
+import { bookingEventSelect, bookingView } from "../lib/booking-view.js";
+import { holdSeatsSchema } from "../schemas/booking.js";
 export const eventsRouter = Router();
 
 // The ownership check (IDOR protection), used by every "my event" route.
@@ -171,6 +174,33 @@ eventsRouter.post(
     res.status(201).json(event);
   },
 );
+
+// POST /api/v1/events/:id/bookings → hold seats (paid event, 5 minutes) or
+// book them (free event). Any logged-in user can book (decision 037).
+// 201 = new booking; 200 = this idempotency key was already used, so this is
+// the same booking again; 409 = not enough seats, or the event has started.
+eventsRouter.post("/:id/bookings", requireAuth, async (req, res) => {
+  const { seats, idempotencyKey } = parseOrThrow(
+    holdSeatsSchema,
+    req.body,
+    "Invalid booking",
+  );
+  const eventId = req.params.id;
+  if (typeof eventId !== "string") throw new HttpError(404, "Event not found");
+
+  const { booking, created } = await holdSeats({
+    eventId,
+    userId: getUser(res).id,
+    seats,
+    idempotencyKey,
+  });
+
+  const event = await prisma.event.findUnique({
+    where: { id: booking.eventId },
+    select: bookingEventSelect,
+  });
+  res.status(created ? 201 : 200).json(bookingView(booking, event));
+});
 
 // PATCH /api/v1/events/:id → edit one of my events (send only what changed)
 // Order: who are you (401) → organiser? (403) → your event? (404) → valid? (400)
