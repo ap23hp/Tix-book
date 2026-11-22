@@ -378,3 +378,16 @@ Trade-off: 403 is more precise and easier to debug ("not allowed" is clearer tha
 nothing. Logs on our side can still record the real reason if needed.
 Revisit if: organisers can share events with co-organisers (then "you can see it but
 can't edit it" becomes a real case, and 403 fits it).
+
+## 033 — "My tickets" moves from phase 3 to phase 4
+Date: 2026-11-22
+Options: (1) an empty "My tickets" page now (2) build it in phase 4, with bookings
+Chose: 2
+Why:
+- Nobody can book until phase 4, so the page could only ever say "no tickets yet".
+  A link to a page that can never show anything makes the app look unfinished.
+- What the page shows (booking reference, status, seats, QR code) is decided by the
+  booking work in phase 4; an empty state built now would be rewritten then.
+Trade-off: phase 3 ends without the attendee's side of "my pages"; attendees have
+nothing of their own to see until booking exists. Issue #35 and PLAN.md are updated.
+Revisit if: never needed; it's scheduled in phase 4.
