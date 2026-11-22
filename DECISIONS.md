@@ -332,3 +332,62 @@ Why: stable when events are added or removed (no duplicates or gaps), stays fast
 tables, fits the month-grouped list. Response: { events, nextCursor }.
 Trade-off: no "jump to page 5"; slightly more logic. An index on (status, startsAt, id)
 will help in phase 7.
+
+## 031 — Client state for toasts: React Context, no state library
+Date: 2026-11-18
+Options: (1) None: pass a toast function down through props
+         (2) React Context + useState
+         (3) Zustand (small global store, no provider)
+Chose: 2. `ToastProvider` in the root layout keeps the list of toasts in its own
+useState. The context holds only the `toast()` function, made once with
+`useCallback(..., [])`, so it never changes.
+Why:
+- Any component, at any depth, needs to show a toast; passing a function through
+  every layer (option 1) doesn't scale.
+- Context's usual cost is that every component reading it re-renders when its value
+  changes. Here the value never changes, so callers never re-render. A test checks
+  this, and fails if the function is re-created.
+- Built into React: no new package for one small piece of state.
+- The root layout stays mounted across navigations, so a toast shown just before
+  `router.push()` is still there on the next page.
+- Most of the app's data is server state (events, bookings), fetched in Server
+  Components (decision 015). That isn't a job for a client store.
+Trade-off: the provider has to wrap the app, and `useToast()` throws outside it.
+Zustand would avoid the provider and let components pick just the part they need.
+Revisit if: several unrelated pieces of client state need sharing across pages
+(e.g. a seat picker plus a basket), or Context re-renders show up as slow.
+
+## 032 — Another organiser's event: 404, not 403
+Date: 2026-11-22
+Options: (1) 403 "You don't have permission"  (2) 404 "Event not found"
+Chose: 2. `GET /api/v1/events/mine/:id` and `PATCH /api/v1/events/:id` give an
+unknown id and someone else's event exactly the same 404 response. One shared
+function, `findOwnEvent`, does the check for every "my event" route.
+Why:
+- A 403 admits "this event exists, it just isn't yours". For drafts that is a leak:
+  nobody else should know they exist. The public GET /:id already treats drafts as
+  404 (it doesn't reveal hidden events), so this matches.
+- One answer for "missing" and "not yours" means the API never confirms whether an
+  id exists. GitHub does the same for private repositories.
+- Ownership is checked before validation, so another organiser doesn't even get a
+  400 that would show our rules for someone else's event.
+- Defence in depth: the update itself also filters on `organiserId`, so a bug in the
+  check still couldn't change another organiser's row.
+Trade-off: 403 is more precise and easier to debug ("not allowed" is clearer than
+"doesn't exist"), and for published events, which anyone can see, the 404 hides
+nothing. Logs on our side can still record the real reason if needed.
+Revisit if: organisers can share events with co-organisers (then "you can see it but
+can't edit it" becomes a real case, and 403 fits it).
+
+## 033 — "My tickets" moves from phase 3 to phase 4
+Date: 2026-11-22
+Options: (1) an empty "My tickets" page now (2) build it in phase 4, with bookings
+Chose: 2
+Why:
+- Nobody can book until phase 4, so the page could only ever say "no tickets yet".
+  A link to a page that can never show anything makes the app look unfinished.
+- What the page shows (booking reference, status, seats, QR code) is decided by the
+  booking work in phase 4; an empty state built now would be rewritten then.
+Trade-off: phase 3 ends without the attendee's side of "my pages"; attendees have
+nothing of their own to see until booking exists. Issue #35 and PLAN.md are updated.
+Revisit if: never needed; it's scheduled in phase 4.

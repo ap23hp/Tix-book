@@ -12,6 +12,8 @@ function makeEvent(id: string, title: string, startsAt: string): EventSummary {
     timezone: "Europe/London",
     venueName: "Hall",
     pricePence: 1000,
+    seatLimit: 50,
+    seatsLeft: 50,
   };
 }
 
@@ -72,4 +74,4 @@ describe("EventFeed", () => {
     );
     expect(screen.getByRole("button", { name: "Try again" })).toBeEnabled();
   });
-}); 
+});

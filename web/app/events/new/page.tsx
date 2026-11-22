@@ -2,7 +2,7 @@ import { Suspense } from "react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { CreateEventForm } from "@/components/CreateEventForm";
+import { EventForm } from "@/components/EventForm";
 import { getCurrentUser } from "@/lib/auth";
 import { display } from "@/lib/ui";
 
@@ -39,5 +39,5 @@ async function OrganisersOnly() {
     );
   }
 
-  return <CreateEventForm />;
+  return <EventForm />;
 }

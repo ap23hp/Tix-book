@@ -4,6 +4,18 @@ import { formatDateParts, formatPrice } from "@/lib/format";
 import { display, label } from "@/lib/ui";
 import type { EventSummary } from "@/lib/types";
 
+// Only worth mentioning when seats are running out. The number comes from the
+// API, which uses the same calculation as the event page, so they always match.
+const FEW_SEATS = 5;
+
+function seatsLeftNote(seatsLeft: number): string | null {
+  if (seatsLeft <= 0) return "Sold out";
+  if (seatsLeft <= FEW_SEATS) {
+    return `Only ${seatsLeft} ${seatsLeft === 1 ? "seat" : "seats"} left`;
+  }
+  return null;
+}
+
 export function EventCard({
   event,
   daysUntil,
@@ -11,8 +23,12 @@ export function EventCard({
   event: EventSummary;
   daysUntil: number;
 }) {
-  const { day, month, weekday, time } = formatDateParts(event.startsAt, event.timezone);
+  const { day, month, weekday, time } = formatDateParts(
+    event.startsAt,
+    event.timezone,
+  );
   const isOnline = event.format === "ONLINE";
+  const seatsNote = seatsLeftNote(event.seatsLeft);
 
   return (
     <Link
@@ -20,19 +36,42 @@ export function EventCard({
       className="ticket flex flex-col rounded-ticket transition duration-160 ease-ticket hover:-translate-y-1 focus-visible:-translate-y-1 motion-reduce:transition-none motion-reduce:hover:translate-y-0"
     >
       <article className="ticket-notched flex flex-1 flex-col rounded-ticket bg-surface">
-        <CoverArt category={event.category} format={event.format} className="h-36 rounded-t-ticket" />
+        <CoverArt
+          category={event.category}
+          format={event.format}
+          className="h-36 rounded-t-ticket"
+        />
 
         {/* Details */}
         <div className="px-5 pb-3 pt-4">
-          <h3 className={`text-display-sm text-ink ${display}`}>{event.title}</h3>
-          <p className="mt-3 text-sm text-ink-muted">{time}</p>
-          <p className="text-sm text-ink-muted">
-            {isOnline ? "Online" : `In person · ${event.venueName ?? "Venue to be announced"}`}
+          <h3 className={`text-display-sm text-ink ${display}`}>
+            {event.title}
+          </h3>
+          {/* The time zone name ("GMT") comes from the runtime's own time
+              zone data. This card renders on the server and again in the
+              browser, and some browsers name it differently ("GMT+0"), which
+              broke hydration. suppressHydrationWarning keeps the server's
+              text for this one element (React: "the DOM wins"). */}
+          <p className="mt-3 text-sm text-ink-muted" suppressHydrationWarning>
+            {time}
           </p>
+          <p className="text-sm text-ink-muted">
+            {isOnline
+              ? "Online"
+              : `In person · ${event.venueName ?? "Venue to be announced"}`}
+          </p>
+          {seatsNote && (
+            <p className="mt-2 text-sm font-semibold text-accent">
+              {seatsNote}
+            </p>
+          )}
         </div>
 
         {/* Perforation: mt-auto pushes it and the stub to the bottom */}
-        <div aria-hidden="true" className="mx-5 mt-auto border-t-2 border-dashed border-perf" />
+        <div
+          aria-hidden="true"
+          className="mx-5 mt-auto border-t-2 border-dashed border-perf"
+        />
 
         {/* Stub: fixed 80px height so the notches line up with the perforation */}
         <div className="flex h-20 items-center justify-between px-5">
@@ -44,9 +83,15 @@ export function EventCard({
             </span>
           </time>
           <div className="text-right">
-            <p className={`text-display-sm text-ink ${display}`}>{formatPrice(event.pricePence)}</p>
+            <p className={`text-display-sm text-ink ${display}`}>
+              {formatPrice(event.pricePence)}
+            </p>
             <p className={`mt-1 text-ink-muted ${label}`}>
-              {daysUntil <= 0 ? "Today" : daysUntil === 1 ? "Tomorrow" : `In ${daysUntil} days`}
+              {daysUntil <= 0
+                ? "Today"
+                : daysUntil === 1
+                  ? "Tomorrow"
+                  : `In ${daysUntil} days`}
             </p>
           </div>
         </div>

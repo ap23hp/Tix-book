@@ -136,7 +136,7 @@ Tasks
 - [ ] Effect cleanup to avoid memory leaks
 - [ ] Use a database transaction where two writes must succeed together
 - [ ] State management decision (local state vs context vs a library), log why
-- [ ] "My tickets" and "My events" pages
+- [ ] "My events" page ("My tickets" moved to phase 4, decision 033)
 - [ ] Reusable components: Button, Input, Select, Card, Modal, Badge, Spinner
 - [ ] Toast / notification messages for success and errors
 - [ ] Event cards and event detail page polished (image, date, price, seats left)
@@ -162,6 +162,7 @@ Tasks
 - [ ] Countdown timer on the frontend (watch for stale closures and cleanup)
 - [ ] Booking flow UI: "Book" button → seat held screen → clear message when the hold expires
 - [ ] Clear "sold out" and "someone else got the last seat" states
+- [ ] "My tickets" page: the attendee's bookings, with status (moved from phase 3, decision 033)
 - [ ] Deliberately cause and observe a deadlock, then explain how to avoid it
 - [ ] Test: many parallel booking requests for the last seats → exactly the right number succeed
 

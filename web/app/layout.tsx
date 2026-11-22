@@ -3,6 +3,7 @@ import { Suspense } from "react";
 import Link from "next/link";
 import { Archivo, Geist, Geist_Mono } from "next/font/google";
 import { UserMenu } from "@/components/UserMenu";
+import { ToastProvider } from "@/components/ui/Toast";
 import "./globals.css";
 
 const archivo = Archivo({
@@ -34,49 +35,54 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         suppressHydrationWarning
         className="min-h-full flex flex-col bg-page text-ink font-sans"
       >
-        {/* Skip link: first thing keyboard users reach */}
-        <a
-          href="#main"
-          className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-full focus:bg-ink focus:px-4 focus:py-2 focus:text-surface"
-        >
-          Skip to main content
-        </a>
+        {/* Toasts can be shown from any page (useToast). It's a Client
+            Component, but the pages inside it can still be Server Components. */}
+        <ToastProvider>
+          {/* Skip link: first thing keyboard users reach */}
+          <a
+            href="#main"
+            className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-full focus:bg-ink focus:px-4 focus:py-2 focus:text-surface"
+          >
+            Skip to main content
+          </a>
 
-        <header className="border-b border-line">
-          <div className="mx-auto flex w-full max-w-300 items-center justify-between px-6 py-4">
-            <Link href="/" className={`text-2xl ${logo}`}>
-              tixbook<span className="text-accent">.</span>
-            </Link>
-            {/* UserMenu reads the cookie, so it needs its own Suspense.
+          <header className="border-b border-line">
+            {/* flex-wrap: on narrow screens the menu moves below the logo */}
+            <div className="mx-auto flex w-full max-w-300 flex-wrap items-center justify-between gap-x-6 gap-y-3 px-6 py-4">
+              <Link href="/" className={`text-2xl ${logo}`}>
+                tixbook<span className="text-accent">.</span>
+              </Link>
+              {/* UserMenu reads the cookie, so it needs its own Suspense.
                 The rest of the page doesn't wait for it. */}
-            <Suspense
-              fallback={<div className="h-9 w-20" aria-hidden="true" />}
-            >
-              <UserMenu />
-            </Suspense>
-          </div>
-        </header>
-
-        <main id="main" className="flex-1">
-          {children}
-        </main>
-
-        <footer className="border-t border-line">
-          <div className="mx-auto flex w-full max-w-300 flex-wrap items-center justify-between gap-4 px-6 py-6 text-sm text-ink-muted">
-            <span className={`text-lg ${logo}`}>
-              tixbook<span className="text-accent">.</span>
-            </span>
-            <p>
-              Built by Apra Khanna{" "}
-              <a
-                href="https://github.com/ap23hp/tix-book"
-                className="ml-3 text-ink underline underline-offset-4"
+              <Suspense
+                fallback={<div className="h-9 w-20" aria-hidden="true" />}
               >
-                GitHub
-              </a>
-            </p>
-          </div>
-        </footer>
+                <UserMenu />
+              </Suspense>
+            </div>
+          </header>
+
+          <main id="main" className="flex-1">
+            {children}
+          </main>
+
+          <footer className="border-t border-line">
+            <div className="mx-auto flex w-full max-w-300 flex-wrap items-center justify-between gap-4 px-6 py-6 text-sm text-ink-muted">
+              <span className={`text-lg ${logo}`}>
+                tixbook<span className="text-accent">.</span>
+              </span>
+              <p>
+                Built by Apra Khanna{" "}
+                <a
+                  href="https://github.com/ap23hp/tix-book"
+                  className="ml-3 text-ink underline underline-offset-4"
+                >
+                  GitHub
+                </a>
+              </p>
+            </div>
+          </footer>
+        </ToastProvider>
       </body>
     </html>
   );

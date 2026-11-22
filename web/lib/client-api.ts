@@ -1,10 +1,10 @@
-// Browser-side POST helper for our API.
+// Browser-side helpers for sending JSON to our API (POST, PATCH).
 // Relative URLs ("/api/...") go through the rewrite in next.config.ts,
 // so the session cookie belongs to our own site (first-party) and is sent.
 
 export type FieldErrors = Record<string, string>;
 
-export type PostResult<T> =
+export type SendResult<T> =
   | { ok: true; data: T }
   | { ok: false; status: number; message: string; fieldErrors: FieldErrors };
 
@@ -13,15 +13,16 @@ type ErrorBody = {
   details?: { field: string; message: string }[];
 };
 
-export async function postJson<T>(
+export async function sendJson<T>(
+  method: "POST" | "PATCH",
   url: string,
   body: unknown,
-): Promise<PostResult<T>> {
+): Promise<SendResult<T>> {
   let res: Response;
 
   try {
     res = await fetch(url, {
-      method: "POST",
+      method,
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
@@ -55,4 +56,8 @@ export async function postJson<T>(
     message: errorBody.error ?? "Something went wrong. Try again.",
     fieldErrors,
   };
+}
+
+export function postJson<T>(url: string, body: unknown) {
+  return sendJson<T>("POST", url, body);
 }

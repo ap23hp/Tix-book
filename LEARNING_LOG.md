@@ -628,3 +628,178 @@ survives refresh.
 **Race conditions:** debounce typing (300 ms); each keystroke's effect cleanup cancels
 the old timer. "Load more" uses AbortController and is cancelled on unmount, so a late
 answer can't add old results to a new list. A `key` from the filters gives a fresh list.
+
+## 2026-11-18 — Phase 3b: UI kit, `<dialog>` and live regions
+
+**Native `<dialog>` (Modal):** `dialog.showModal()` gives me, from the browser:
+- a focus trap: the rest of the page becomes inert, so Tab can't leave the dialog
+- Escape to close (the browser fires `cancel`, then `close`)
+- focus moves into the dialog on open, and back to the opening button on close
+- the "top layer": always on top, no z-index; style the dark background with `::backdrop`
+
+**Keeping React and the dialog in sync (both ways):**
+- Prop → dialog: an effect calls `showModal()` when `open` is true and `close()`
+  when it's false. Check `dialog.open` first (`showModal()` on an open dialog throws).
+- Dialog → prop: Escape closes the dialog without React knowing. The `close` event
+  calls `onClose()` so the parent sets `open` to false.
+- Without the second part, the parent still thinks it's open, `setOpen(true)` changes
+  nothing, and the modal can never open again. My test presses Escape, then opens it again.
+- Tailwind's reset removes the browser's centring margin, so the dialog needs `m-auto`.
+
+**Testing `<dialog>`:** jsdom has no `showModal()`, `close()` or Escape behaviour.
+`jest.setup.ts` adds a small stand-in. So Jest tests check my wiring; the real focus
+trap must be checked in a browser (and later in Playwright).
+
+**Live regions (Toast):**
+- A live region (`role="status"` or `role="alert"`) tells screen readers "read changes
+  in here out loud". `status` = polite (waits for a pause). `alert` = interrupts.
+- The region must be in the page BEFORE the message arrives. A region added together
+  with its text is often not read. So both toast regions are always rendered, empty.
+- `role="status"` and `role="alert"` default to `aria-atomic="true"`: read the WHOLE
+  region on any change. With two toasts, the old one is read again. `aria-atomic="false"`
+  reads only the new one.
+- Focus never moves to a toast. It pauses while hovered or focused (WCAG 2.2.1),
+  and important errors still go next to the form field.
+
+**Form ids:** `useId()` instead of `id={name}`. Hidden pages stay in the DOM (`<Activity>`),
+so the login and sign-up pages both had `id="email"`.
+
+**Tests that prove something:** I broke the code on purpose to check each important test
+fails. The first re-render test used `<Profiler>`, and it passed even when the bug was
+there: Profiler didn't report the re-render. A plain `jest.fn()` called during render
+caught it. Lesson: a test that never failed hasn't proved anything yet.
+
+**Interview lines:**
+- "I used the native dialog with showModal(), so the browser gives me the focus trap,
+  Escape and focus return."
+- "A live region has to exist before its content changes, so the toast container is
+  always rendered, even when empty."
+- "The context holds a stable function, not changing state, so the components that use
+  it don't re-render."
+
+## 2026-11-22 — My events API, PATCH and IDOR
+
+**IDOR (Insecure Direct Object Reference):** the id comes from the URL, so anyone can
+send any id. If the server only checks "are you logged in as an organiser?", any
+organiser can edit any event just by changing the id. Fix: load the row and compare
+its owner with the session user, every time.
+
+**The order of checks in PATCH:** 401 (who are you?) → 403 (organiser?) → 404 (your
+event?) → 400 (valid data?) → update. Ownership comes before validation, so someone
+else's event never gives away our rules in a 400.
+
+**404, not 403, for someone else's event (decision 032):** a 403 says "it exists".
+The test checks that "not yours" and "unknown id" return exactly the same body.
+
+**Defence in depth:** the update also has `where: { id, organiserId }`. Our Prisma (7.10.1)
+allows a non-unique field next to `id` there (checked in the generated types). If nothing
+matches, it throws `P2025` (Prisma docs). A test runs that on the real database.
+
+**Partial updates (PATCH):**
+- `eventFields.partial()` = every field optional; send only what changed.
+- Rules between fields can't be checked on the patch alone: a new `endsAt` needs the
+  saved `startsAt`. So: merge the saved row with the changes, then check the rules.
+- `null` means "clear this field" (switching to online clears the venue). Missing means
+  "don't change". JSON can't send `undefined`, so `null` is how you clear something.
+- Zod drops unknown fields, so `organiserId` in the body can't move the event.
+
+**Express gotchas:**
+- Route order: `/mine` must be declared before `/:id`, or `/:id` catches it with
+  id = "mine".
+- After middleware, `req.params.id` is typed `string | string[] | undefined`, so the
+  ownership helper checks `typeof id === "string"` at runtime.
+
+**Testing lesson again:** I broke the ownership check and the merged-rules check on purpose.
+Both made tests fail, so the tests really protect them.
+
+**Interview lines:**
+- "IDOR is trusting an id from the client. I load the row and compare its owner with the
+  session user, in one shared function."
+- "For a partial update I merge the patch with the saved row and validate the result,
+  because rules that compare fields need both."
+
+## 2026-11-22 — My events page, edit form, and checking it in a real browser
+
+**One form, two modes:** `EventForm` creates (POST) when it gets no event, and edits
+(PATCH) when it gets one. Same fields and rules; edit mode adds a Status select,
+pre-filled `defaultValue`s and Cancel. `form.reset()` goes back to the defaultValues,
+which in edit mode is the saved event.
+
+**Times and time zones:** `<input type="datetime-local">` has no time zone. The browser
+reads it in ITS OWN zone, so the form shows and saves times in the browser's zone (not
+the event's `timezone` field). `toDateTimeLocal()` turns the saved UTC time into local
+"YYYY-MM-DDTHH:mm" (not `toISOString().slice(0, 16)`, which would show UTC).
+Known limit: an organiser travelling abroad sees the form in their current zone, while
+"My events" shows the event's own zone.
+
+**Testing time zones in Jest:** changing `process.env.TZ` inside a test does nothing:
+each test file gets its own copy of `process.env`. Set it once in `jest.config.ts`
+(before the workers start). My first London tests only passed because my laptop is in
+the UK: they would have failed on a computer anywhere else.
+
+**Always-present live regions vs tests:** the toast's empty `role="alert"` region is
+always in the page, so `findByRole("alert")` found it instead of the form's error.
+Fix: find the message by its text, then check its role.
+
+**Server-side calls as the user:** `lib/server-api.ts` forwards the `session` cookie by
+hand (server-to-server fetch doesn't send the browser's cookies). `notFound()` shows the
+same page for "doesn't exist" and "not yours" (the API answers 404 for both).
+
+**Next.js route types:** `PageProps<"/events/[id]/edit">` failed type-checking until
+`npx next typegen` ran: route types are generated from the `app/` folder by
+`next dev`, `next build` or `next typegen`.
+
+**Real-browser check of the Modal (things jsdom can't do):**
+- Opening: focus moves into the dialog (onto the × button), `:modal` matches.
+- Tab six times: focus cycled through the dialog's 3 buttons, never the page behind it.
+- Escape: closes, focus returns to the Cancel button, typed changes are kept.
+- Opens again after Escape (the prop ↔ dialog sync works in a real browser too).
+- Save: PATCH → "Event updated" toast still showing on /my-events.
+
+**Git lesson:** `git add` with one wrong path adds NOTHING, so a commit got the renames
+but not the edits. Always read `git status` before committing: `RM` / ` M` meant
+"staged rename, unstaged changes".
+
+**Interview lines:**
+- "datetime-local has no time zone; the browser uses its own, so I convert in the
+  browser's zone in both directions and test it with a pinned TZ."
+- "I check the focus trap in a real browser, because jsdom doesn't implement dialog."
+
+## 2026-11-22 — Seats left, responsive pass, Playwright and axe
+
+**N+1 queries:** one query for the list, then one more per event = N+1 queries. Instead,
+one `groupBy` adds up the booked seats for every event on the page at once: 2 queries
+in total, whatever the page size.
+
+**One calculation, used everywhere:** `api/src/lib/seats.ts` is the only place that decides
+what "taken" means (confirmed + holds that haven't expired, adding up `seats`). The list
+and the event page both call it, so they can't disagree. A test with a 2-seat booking and
+an expired hold proves it; it fails if expired holds are counted.
+
+**Responsive pass:** I measured each page at 375, 768 and 1280px with a small script
+(is the page wider than the screen? which elements stick out?). Found two problems:
+- the organiser header was too wide on a phone (sideways scrolling, "Log out" cut off).
+  Fix: `flex-wrap` on the header, `whitespace-nowrap` on the items, `truncate` on the name.
+- an invisible "Clear" button left an empty gap on phones. `visibility: hidden` keeps the
+  space (good on desktop: no jump), `display: none` removes it (better on a phone).
+
+**Playwright:** a real browser against the real app. `webServer` starts (or reuses) the
+API and the web app. Lessons:
+- Strict mode: a locator must match exactly one element, and hidden elements count.
+  The page I came from is still in the DOM (`<Activity>`), so I scope locators
+  (e.g. inside the "Tickets" box).
+- A cold dev server compiles each page on the first visit, so assertions get 15 seconds.
+
+**axe:** the engine behind axe DevTools, run by `@axe-core/playwright` on 9 pages
+against WCAG 2.2 A + AA. No violations. To prove the check works, I broke a label on
+purpose: axe reported "label (critical): Form elements must have labels".
+Automated checks only find part of the problems, so I also did a keyboard pass by hand.
+
+**Debugging my own tools:** twice my measurements were wrong, not the app: a script
+measured a hidden copy of the page, and a focus recorder missed events. Lesson: when a
+result looks surprising, check the measurement before "fixing" the code.
+
+**Interview lines:**
+- "N+1 means one query per row. I load the counts for the whole page in one grouped query."
+- "I keep one function for seats left, so two pages can never show different numbers."
+- "axe finds the mechanical problems; a keyboard pass finds the rest."

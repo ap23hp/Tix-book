@@ -3,7 +3,8 @@
 import { useLayoutEffect, useRef, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FormField } from "@/components/FormField";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
 import { postAuth, type FieldErrors } from "@/lib/auth-client";
 
 export function SignupForm() {
@@ -72,7 +73,7 @@ export function SignupForm() {
         </p>
       )}
 
-      <FormField
+      <Input
         label="Name"
         name="name"
         autoComplete="name"
@@ -80,7 +81,7 @@ export function SignupForm() {
         maxLength={100}
         error={fieldErrors.name}
       />
-      <FormField
+      <Input
         label="Email"
         name="email"
         type="email"
@@ -88,7 +89,7 @@ export function SignupForm() {
         required
         error={fieldErrors.email}
       />
-      <FormField
+      <Input
         label="Password (at least 8 characters)"
         name="password"
         type="password"
@@ -111,13 +112,9 @@ export function SignupForm() {
         </label>
       </fieldset>
 
-      <button
-        type="submit"
-        disabled={pending}
-        className="rounded-full bg-accent px-7 py-3 font-semibold text-surface hover:bg-accent-hover disabled:opacity-60"
-      >
+      <Button type="submit" disabled={pending}>
         {pending ? "Creating account…" : "Create account"}
-      </button>
+      </Button>
 
       <p className="text-sm text-ink-soft">
         Already have an account?{" "}

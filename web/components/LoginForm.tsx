@@ -3,7 +3,8 @@
 import { useLayoutEffect, useRef, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FormField } from "@/components/FormField";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
 import { postAuth, type FieldErrors } from "@/lib/auth-client";
 
 export function LoginForm() {
@@ -70,7 +71,7 @@ export function LoginForm() {
         </p>
       )}
 
-      <FormField
+      <Input
         label="Email"
         name="email"
         type="email"
@@ -78,7 +79,7 @@ export function LoginForm() {
         required
         error={fieldErrors.email}
       />
-      <FormField
+      <Input
         label="Password"
         name="password"
         type="password"
@@ -87,13 +88,9 @@ export function LoginForm() {
         error={fieldErrors.password}
       />
 
-      <button
-        type="submit"
-        disabled={pending}
-        className="rounded-full bg-accent px-7 py-3 font-semibold text-surface hover:bg-accent-hover disabled:opacity-60"
-      >
+      <Button type="submit" disabled={pending}>
         {pending ? "Logging in…" : "Log in"}
-      </button>
+      </Button>
 
       <p className="text-sm text-ink-soft">
         New here?{" "}

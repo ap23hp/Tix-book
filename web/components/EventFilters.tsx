@@ -8,9 +8,16 @@ import {
   toQueryString,
   type EventFilters as Filters,
 } from "@/lib/events";
+import { Input } from "@/components/ui/Input";
+import { Select } from "@/components/ui/Select";
 
-const fieldClass =
-  "rounded-lg border border-line bg-surface px-4 py-3 text-ink";
+// "All" (empty value) = no filter
+const ALL = { value: "", label: "All" };
+const CATEGORY_OPTIONS = [
+  ALL,
+  ...CATEGORIES.map((name) => ({ value: name, label: name })),
+];
+const FORMAT_OPTIONS = [ALL, ...FORMATS];
 
 // Search box + filters. They don't fetch anything themselves: they put the
 // choices in the URL (/?q=jazz&format=ONLINE) and the server page re-renders.
@@ -64,65 +71,33 @@ export function EventFilters({ initial }: { initial: Filters }) {
       onSubmit={(event) => event.preventDefault()}
       className="mt-8 grid gap-4 sm:grid-cols-[1fr_auto_auto_auto] sm:items-end"
     >
-      <div className="flex flex-col gap-1.5">
-        <label htmlFor="filter-q" className="text-sm font-semibold text-ink">
-          Search events
-        </label>
-        <input
-          id="filter-q"
-          type="search"
-          value={q}
-          onChange={(event) => setQ(event.target.value)}
-          placeholder="Comedy, jazz, workshop…"
-          maxLength={100}
-          className={fieldClass}
-        />
-      </div>
+      <Input
+        label="Search events"
+        type="search"
+        value={q}
+        onChange={(event) => setQ(event.target.value)}
+        placeholder="Comedy, jazz, workshop…"
+        maxLength={100}
+      />
 
-      <div className="flex flex-col gap-1.5">
-        <label
-          htmlFor="filter-category"
-          className="text-sm font-semibold text-ink"
-        >
-          Category
-        </label>
-        <select
-          id="filter-category"
-          value={category}
-          onChange={(event) => setCategory(event.target.value)}
-          className={fieldClass}
-        >
-          <option value="">All</option>
-          {CATEGORIES.map((name) => (
-            <option key={name} value={name}>
-              {name}
-            </option>
-          ))}
-        </select>
-      </div>
+      <Select
+        label="Category"
+        value={category}
+        onChange={(event) => setCategory(event.target.value)}
+        options={CATEGORY_OPTIONS}
+      />
 
-      <div className="flex flex-col gap-1.5">
-        <label
-          htmlFor="filter-format"
-          className="text-sm font-semibold text-ink"
-        >
-          Format
-        </label>
-        <select
-          id="filter-format"
-          value={format}
-          onChange={(event) => setFormat(event.target.value)}
-          className={fieldClass}
-        >
-          <option value="">All</option>
-          {FORMATS.map(({ value, label }) => (
-            <option key={value} value={value}>
-              {label}
-            </option>
-          ))}
-        </select>
-      </div>
+      <Select
+        label="Format"
+        value={format}
+        onChange={(event) => setFormat(event.target.value)}
+        options={FORMAT_OPTIONS}
+      />
 
+      {/* With no filters, Clear is hidden. From sm up it stays "invisible"
+          (keeps its space), so the row doesn't jump when it appears. On a
+          phone the fields are stacked and an invisible button would leave an
+          empty gap, so there it's removed from the layout instead. */}
       <button
         type="button"
         onClick={() => {
@@ -131,7 +106,7 @@ export function EventFilters({ initial }: { initial: Filters }) {
           setFormat("");
         }}
         disabled={!hasFilters}
-        className="rounded-full px-5 py-3 text-sm font-semibold text-ink-soft underline underline-offset-4 hover:text-ink disabled:invisible"
+        className="rounded-full px-5 py-3 text-sm font-semibold text-ink-soft underline underline-offset-4 hover:text-ink disabled:invisible max-sm:disabled:hidden"
       >
         Clear
       </button>
