@@ -21,6 +21,14 @@ export async function UserMenu() {
     <div className="flex items-center gap-4">
       {user.role === "ORGANISER" && (
         <Link
+          href="/my-events"
+          className="text-sm font-semibold text-ink hover:underline"
+        >
+          My events
+        </Link>
+      )}
+      {user.role === "ORGANISER" && (
+        <Link
           href="/events/new"
           className="rounded-full bg-ink px-5 py-2 text-sm font-semibold text-surface hover:bg-ink-soft"
         >
