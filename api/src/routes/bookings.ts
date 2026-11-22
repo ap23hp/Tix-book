@@ -4,6 +4,7 @@ import { getUser, requireAuth } from "../middleware/auth.js";
 import { HttpError } from "../lib/errors.js";
 import { confirmHold, expireHolds } from "../lib/bookings.js";
 import { bookingEventSelect, bookingView } from "../lib/booking-view.js";
+import { startCheckout } from "../lib/payments.js";
 
 export const bookingsRouter = Router();
 
@@ -60,8 +61,19 @@ bookingsRouter.get("/:id", async (req, res) => {
   res.status(200).json(bookingView(booking, booking.event, now));
 });
 
+// POST /api/v1/bookings/:id/checkout → { url } of a Stripe Checkout page
+// for my held seats. The booking is confirmed by the Stripe webhook, never
+// by the browser coming back from Stripe (anyone can open the success URL).
+bookingsRouter.post("/:id/checkout", async (req, res) => {
+  const user = getUser(res);
+  const booking = await findOwnBooking(req.params.id, user.id);
+  const { url } = await startCheckout(booking, user.email);
+  res.status(200).json({ url });
+});
+
 // POST /api/v1/bookings/:id/confirm → turn my hold into a confirmed booking.
 // Stands in for "payment succeeded" until Stripe in phase 5 (decision 036).
+// Removed in phase 5b, when the web app switches to Stripe Checkout.
 // 409 if the hold has expired (the seats may already be someone else's).
 bookingsRouter.post("/:id/confirm", async (req, res) => {
   const booking = await findOwnBooking(req.params.id, getUser(res).id);
