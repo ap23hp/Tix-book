@@ -895,3 +895,31 @@ new test wraps the modal in `<Activity>` and hides it.
   can't be fooled by the user's clock."
 - "A modal dialog makes everything else inert. With pages kept alive but hidden, a modal
   left open on the old page blocked the new one; closing it in the effect cleanup fixed it."
+
+## 2026-11-23 — Phase 4d: My tickets, and what end-to-end tests caught
+
+**End-to-end booking flow (Playwright):** an organiser creates a paid event through the API
+(`request` fixture), and the browser page is the attendee: book 2 seats → countdown →
+confirm → the ticket on My tickets. A second test uses another request context as "someone
+else" who holds the only seat first. Shared helpers live in `e2e/helpers.ts`.
+
+**The bug it found:** after a 409 the page refreshes the seat count. When that made the
+event sold out, the booking panel returned only the "Sold out" button and the dialog (with
+the "someone else got the last seats" message) vanished the moment it appeared. Unit tests
+didn't see it because nothing re-rendered with 0 seats. Fix: only the trigger button
+changes; the dialog stays until the user closes it. New unit test: re-render to 0 seats,
+the message stays.
+
+**Lesson (twice in phase 4):** Next.js keeps hidden pages and refreshes server data under a
+Client Component. Both bugs only appeared when something outside the component changed
+(a hidden page, new props after a refresh). End-to-end tests and real-browser checks find
+these; component tests with fixed props don't.
+
+**axe on the booking pages:** the dialog, the held booking (with the live countdown), the
+confirmed booking and My tickets: no violations.
+
+**Interview lines:**
+- "My end-to-end tests drive two users at once, so I can test 'someone else got the last
+  seat' for real, and that test found a bug unit tests couldn't."
+- "When a parent re-renders with new data, a component that returns early can unmount
+  things the user is still reading; I only swap what has to change."
