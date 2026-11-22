@@ -10,6 +10,9 @@ export type EventSummary = {
   timezone: string;
   venueName: string | null;
   pricePence: number;
+  seatLimit: number;
+  // Calculated by the API (api/src/lib/seats.ts), same as on the event page
+  seatsLeft: number;
 };
 // One page of GET /api/v1/events
 export type EventPage = {
@@ -23,8 +26,6 @@ export type EventDetail = EventSummary & {
   endsAt: string;
   doorsAt: string | null;
   venueAddress: string | null;
-  seatLimit: number;
-  seatsLeft: number;
 };
 export type EventStatus = "DRAFT" | "PUBLISHED" | "CANCELLED";
 
