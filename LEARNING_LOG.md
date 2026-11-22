@@ -838,3 +838,31 @@ once, so booking transactions get 10s.
   fails when I remove the lock."
 - "Idempotency: a key from the client plus a unique constraint, so retries and double
   clicks give one booking even when they arrive at the same moment."
+
+## 2026-11-22 — Phase 4b: optimistic vs pessimistic, measured, and a real deadlock
+
+**Optimistic locking:** don't lock while reading; remember a version (here the event's
+`updatedAt`), and save with `updateMany(where: { id, updatedAt: version })`. 0 rows updated =
+someone else changed it first → roll back and retry after a short random wait (so the
+requests that clashed don't all retry at the same moment). Removing the version check sold
+13 seats for 5 places, so the check is what makes it safe.
+
+**What the numbers showed** (DECISIONS 038): with most requests refused, optimistic was faster
+(refused requests stop early; with a lock they queue). With room for everyone, optimistic was
+almost 2x slower with ~260 retries for 40 bookings: each success makes everyone else's read
+out of date. Lesson: "optimistic is faster" is only true when conflicts are rare.
+
+**Deadlock:** A locks event 1, B locks event 2, then A wants 2 and B wants 1: each waits for
+the other forever. Postgres checks for this after about a second and cancels one:
+`Raw query failed. Code: 40P01. Message: deadlock detected`. The fix is a fixed lock order
+(sorted ids): then the second transaction just waits in line.
+
+**A test that passed for the wrong reason:** my first deadlock test passed "both finished"
+because the two transactions never overlapped (starting a transaction over the network took
+longer than my 500 ms wait). I fixed it by waiting until both held their first lock.
+
+**Interview lines:**
+- "I measured both. Optimistic wins when most requests fail early; with many successes at
+  once it retries so much it's twice as slow, so I kept the row lock."
+- "Deadlocks come from taking locks in different orders. Postgres detects them and cancels
+  one; I avoid them by locking in a fixed order."

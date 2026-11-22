@@ -456,3 +456,35 @@ mistake.
 Trade-off: one person could still hold many seats with several bookings (each held for 5
 minutes); a scalper protection would need limits per user or per event.
 Revisit if: abuse appears, or organisers ask for "max N tickets per person".
+
+## 038 — Locking, measured: keep pessimistic (row lock)
+Date: 2026-11-22
+Options: (1) pessimistic: `SELECT ... FOR UPDATE` on the event row (decision 034)
+         (2) optimistic: read a version without locking, save only if it's unchanged,
+             retry with a short random wait on a conflict (`src/lab/optimistic-booking.ts`)
+Measured (`npm run lab:locking`, 40 simultaneous 1-seat bookings, 3 rounds each, my laptop
+→ Neon Frankfurt):
+| Scenario | Pessimistic | Optimistic |
+|---|---|---|
+| Mostly sold out (10 seats) | ~2.5 s, 0 retries | ~1.9 s, 7 retries |
+| Room for everyone (40 seats) | ~3.1 s, 0 retries | ~5.9 s, ~260 retries (6.5 per booking) |
+Both were correct in every round: no overselling, no errors.
+Chose: 1, keep the row lock.
+Why:
+- Optimistic only wins when most requests are refused early (they read "sold out" and stop,
+  while with a lock even the refused ones queue). When many people succeed at once, each
+  success invalidates everyone else's read, so retries snowball: nearly 2x slower and ~260
+  wasted attempts for 40 bookings.
+- A popular event going on sale is exactly "many successes at once".
+- No retry limit to tune, and no "too busy, try again" (503) when retries run out.
+Trade-off: refused requests wait in the lock queue too. The experiment used the event's
+`updatedAt` as the version (no schema change); adopting optimistic for real would need an
+integer `version` column.
+Revisit if: measured on Render next to the database (lower latency changes the numbers), or
+if one event's lock queue becomes the bottleneck.
+
+Deadlocks: caused on purpose in `locking-lab.test.ts`: two transactions locking two events in
+opposite order → Postgres cancels one with error 40P01 ("deadlock detected"). The booking API
+can't deadlock this way because each booking locks exactly one event row; if a future feature
+locks several (a basket), it must lock them in a fixed order (sorted ids), which the second
+test shows avoids it.
