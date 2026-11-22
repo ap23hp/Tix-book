@@ -10,6 +10,10 @@ export default defineConfig({
   forbidOnly: true,
   // The first page load in dev mode compiles the page, which can be slow
   timeout: 60_000,
+  // Same reason: on a cold dev server, the first visit to a page can take
+  // longer than the default 5 seconds while it compiles (seen with the
+  // event page when tests ran in parallel)
+  expect: { timeout: 15_000 },
   use: {
     baseURL: "http://localhost:3000",
     trace: "retain-on-failure",
