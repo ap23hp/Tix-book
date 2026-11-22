@@ -116,11 +116,10 @@ Open questions I haven't solved yet are in [QUALITY_NOTES.md](./QUALITY_NOTES.md
 
 You need Node.js 22 and a PostgreSQL database for development (for example a free Neon branch). Never point a local `.env` at a production database.
 
-**Environment variables.** `api/.env.example` lists `DATABASE_URL` (the dev database) and `SEED_ALLOWED_HOST` (the dev database host; the seed refuses to run anywhere else). The code also reads these, which aren't in an example file yet:
+**Environment variables.** Each app has an example file with every variable it reads, with placeholder values and a comment on each:
 
-- `API_URL` in `web/.env.local`: the address of your local API
-- `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI` in `api/.env`: only needed for "Continue with Google"
-- `PORT` (optional): the API's port, 4000 by default
+- [`api/.env.example`](./api/.env.example) → copy to `api/.env`: `DATABASE_URL` (the dev database), `SEED_ALLOWED_HOST` (the seed refuses to run on any other host), optional `PORT`, and the optional `GOOGLE_*` settings for "Continue with Google"
+- [`web/.env.example`](./web/.env.example) → copy to `web/.env.local`: `API_URL`, the address of your local API
 
 ```bash
 # API (port 4000)
@@ -136,7 +135,7 @@ npm run dev
 # Frontend (port 3000), in a second terminal
 cd web
 npm install
-# create web/.env.local with API_URL
+# create web/.env.local from web/.env.example
 npm run dev
 ```
 
