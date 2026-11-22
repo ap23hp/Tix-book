@@ -84,3 +84,9 @@ export const listEventsQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(50).default(12),
   cursor: z.string().max(200).optional(),
 });
+
+// GET /api/v1/events/mine?limit=&cursor= (no search or filters yet)
+export const myEventsQuerySchema = listEventsQuerySchema.pick({
+  limit: true,
+  cursor: true,
+});

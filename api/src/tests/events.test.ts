@@ -5,9 +5,13 @@ import { prisma } from "../lib/prisma.js";
 
 const runId = Date.now();
 
-// Signs up, logs in, and returns "session=<token>" for the Cookie header
-async function logInAs(role: "ATTENDEE" | "ORGANISER"): Promise<string> {
-  const email = `events-test-${role.toLowerCase()}-${runId}@example.com`;
+// Signs up, logs in, and returns "session=<token>" for the Cookie header.
+// A different label gives a different user (e.g. two organisers).
+async function logInAs(
+  role: "ATTENDEE" | "ORGANISER",
+  label: string = role.toLowerCase(),
+): Promise<string> {
+  const email = `events-test-${label}-${runId}@example.com`;
   const password = "test-password-1";
   await request(app)
     .post("/api/v1/auth/signup")
@@ -183,6 +187,133 @@ describe("GET /api/v1/events/:id", () => {
 
     expect(response.status).toBe(404);
     expect(response.body).toEqual({ error: "Event not found" });
+  });
+});
+
+describe("GET /api/v1/events/mine and /mine/:id", () => {
+  let ownerCookie = "";
+  let otherCookie = "";
+  let attendeeCookie = "";
+  const ids = { future: "", past: "", others: "" };
+
+  // Everything an event needs; each test event changes only what it's about
+  const base = {
+    description: "Created by a test",
+    category: "Music",
+    format: "ONLINE" as const,
+    meetingLink: "https://example.com/meet",
+    timezone: "Europe/London",
+    pricePence: 0,
+    seatLimit: 10,
+  };
+
+  async function myId(cookie: string): Promise<string> {
+    const me = await request(app).get("/api/v1/auth/me").set("Cookie", cookie);
+    return me.body.id;
+  }
+
+  beforeAll(async () => {
+    ownerCookie = await logInAs("ORGANISER", "mine-owner");
+    otherCookie = await logInAs("ORGANISER", "mine-other");
+    attendeeCookie = await logInAs("ATTENDEE", "mine-attendee");
+    const ownerId = await myId(ownerCookie);
+    const otherId = await myId(otherCookie);
+
+    const future = await prisma.event.create({
+      data: {
+        ...base,
+        title: "My future draft",
+        status: "DRAFT",
+        startsAt: new Date("2031-05-01T19:00:00Z"),
+        endsAt: new Date("2031-05-01T21:00:00Z"),
+        organiserId: ownerId,
+      },
+    });
+    const past = await prisma.event.create({
+      data: {
+        ...base,
+        title: "My past event",
+        status: "PUBLISHED",
+        startsAt: new Date("2020-05-01T19:00:00Z"),
+        endsAt: new Date("2020-05-01T21:00:00Z"),
+        organiserId: ownerId,
+      },
+    });
+    const others = await prisma.event.create({
+      data: {
+        ...base,
+        title: "Someone else's event",
+        status: "PUBLISHED",
+        startsAt: new Date("2031-06-01T19:00:00Z"),
+        endsAt: new Date("2031-06-01T21:00:00Z"),
+        organiserId: otherId,
+      },
+    });
+    ids.future = future.id;
+    ids.past = past.id;
+    ids.others = others.id;
+  });
+
+  it("returns 401 when not logged in", async () => {
+    expect((await request(app).get("/api/v1/events/mine")).status).toBe(401);
+  });
+
+  it("returns 403 for an attendee", async () => {
+    const response = await request(app)
+      .get("/api/v1/events/mine")
+      .set("Cookie", attendeeCookie);
+    expect(response.status).toBe(403);
+  });
+
+  it("lists only my events, drafts and past ones too, latest start first", async () => {
+    const response = await request(app)
+      .get("/api/v1/events/mine")
+      .set("Cookie", ownerCookie);
+
+    expect(response.status).toBe(200);
+    expect(
+      response.body.events.map((event: { id: string }) => event.id),
+    ).toEqual([ids.future, ids.past]);
+    expect(response.body.nextCursor).toBeNull();
+  });
+
+  it("pages through my events with a cursor", async () => {
+    const page1 = await request(app)
+      .get("/api/v1/events/mine?limit=1")
+      .set("Cookie", ownerCookie);
+    expect(page1.body.events[0].id).toBe(ids.future);
+    expect(typeof page1.body.nextCursor).toBe("string");
+
+    const page2 = await request(app)
+      .get(`/api/v1/events/mine?limit=1&cursor=${page1.body.nextCursor}`)
+      .set("Cookie", ownerCookie);
+    expect(page2.body.events[0].id).toBe(ids.past);
+    expect(page2.body.nextCursor).toBeNull();
+  });
+
+  it("returns one of my events with its meeting link, even as a draft", async () => {
+    const response = await request(app)
+      .get(`/api/v1/events/mine/${ids.future}`)
+      .set("Cookie", ownerCookie);
+
+    expect(response.status).toBe(200);
+    expect(response.body.status).toBe("DRAFT");
+    expect(response.body.meetingLink).toBe("https://example.com/meet");
+  });
+
+  it("answers someone else's event exactly like an unknown id (404)", async () => {
+    const others = await request(app)
+      .get(`/api/v1/events/mine/${ids.others}`)
+      .set("Cookie", ownerCookie);
+    const unknown = await request(app)
+      .get("/api/v1/events/mine/not-a-real-id")
+      .set("Cookie", ownerCookie);
+
+    expect(others.status).toBe(404);
+    expect(unknown.status).toBe(404);
+    // Same body, so the response can't tell anyone the event exists
+    expect(others.body).toEqual(unknown.body);
+    expect(others.body).toEqual({ error: "Event not found" });
   });
 });
 
