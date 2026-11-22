@@ -359,3 +359,76 @@ describe("GET /api/v1/bookings/:id and /mine", () => {
     ]);
   });
 });
+
+describe("POST /api/v1/bookings/:id/confirm", () => {
+  function confirm(id: string, cookie: string) {
+    return request(app)
+      .post(`/api/v1/bookings/${id}/confirm`)
+      .set("Cookie", cookie);
+  }
+
+  it("confirms my hold, shows the meeting link, and the seats stay taken", async () => {
+    const event = await makeEvent({ seatLimit: 4 });
+    const held = await book(event.id, attendee.cookie, {
+      seats: 2,
+      idempotencyKey: randomUUID(),
+    });
+
+    const response = await confirm(held.body.id, attendee.cookie);
+    expect(response.status).toBe(200);
+    expect(response.body.status).toBe("CONFIRMED");
+    expect(response.body.event.meetingLink).toBe("https://example.com/meet");
+
+    const page = await request(app).get(`/api/v1/events/${event.id}`);
+    expect(page.body.seatsLeft).toBe(2);
+  });
+
+  it("answers a second confirm (double click) with the same booking", async () => {
+    const event = await makeEvent();
+    const held = await book(event.id, attendee.cookie, {
+      seats: 1,
+      idempotencyKey: randomUUID(),
+    });
+    await confirm(held.body.id, attendee.cookie);
+    const again = await confirm(held.body.id, attendee.cookie);
+    expect(again.status).toBe(200);
+    expect(again.body.status).toBe("CONFIRMED");
+  });
+
+  it("refuses an expired hold with 409", async () => {
+    const event = await makeEvent();
+    const old = await prisma.booking.create({
+      data: {
+        eventId: event.id,
+        userId: attendee.id,
+        seats: 1,
+        unitPricePence: 1500,
+        status: "HELD",
+        holdExpiresAt: new Date(Date.now() - 1000),
+        reference: `TEST-${runId}-confirm-expired`,
+        idempotencyKey: randomUUID(),
+      },
+    });
+
+    const response = await confirm(old.id, attendee.cookie);
+    expect(response.status).toBe(409);
+    expect(response.body).toEqual({
+      error: "Your hold has expired and the seats were released",
+    });
+  });
+
+  it("returns 404 for someone else's booking", async () => {
+    const event = await makeEvent();
+    const held = await book(event.id, attendee.cookie, {
+      seats: 1,
+      idempotencyKey: randomUUID(),
+    });
+    const stranger = await makeUser("confirm-stranger", "ATTENDEE");
+    const response = await confirm(held.body.id, stranger.cookie);
+    expect(response.status).toBe(404);
+    const stored = await prisma.booking.findUniqueOrThrow({
+      where: { id: held.body.id },
+    });
+    expect(stored.status).toBe("HELD");
+  });
+});

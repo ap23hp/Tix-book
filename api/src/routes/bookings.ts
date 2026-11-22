@@ -2,7 +2,7 @@ import { Router } from "express";
 import { prisma } from "../lib/prisma.js";
 import { getUser, requireAuth } from "../middleware/auth.js";
 import { HttpError } from "../lib/errors.js";
-import { expireHolds } from "../lib/bookings.js";
+import { confirmHold, expireHolds } from "../lib/bookings.js";
 import { bookingEventSelect, bookingView } from "../lib/booking-view.js";
 
 export const bookingsRouter = Router();
@@ -58,4 +58,13 @@ bookingsRouter.get("/:id", async (req, res) => {
   const now = new Date();
   await expireHolds(prisma, { id: booking.id }, now);
   res.status(200).json(bookingView(booking, booking.event, now));
+});
+
+// POST /api/v1/bookings/:id/confirm → turn my hold into a confirmed booking.
+// Stands in for "payment succeeded" until Stripe in phase 5 (decision 036).
+// 409 if the hold has expired (the seats may already be someone else's).
+bookingsRouter.post("/:id/confirm", async (req, res) => {
+  const booking = await findOwnBooking(req.params.id, getUser(res).id);
+  const { booking: confirmed, now } = await confirmHold(booking);
+  res.status(200).json(bookingView(confirmed, booking.event, now));
 });
