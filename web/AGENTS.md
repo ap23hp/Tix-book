@@ -10,4 +10,4 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 ## Project rules for AI tools
 This is a learning project. Follow CLAUDE.md at the repo root.
-Explain concepts, review my code, and point out mistakes without giving the full solution.
+Explain concepts, review my code, and explain every change in plain English.
