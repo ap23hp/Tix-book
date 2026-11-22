@@ -15,8 +15,8 @@ export default function BookingNotFound() {
       <p className="mt-2 max-w-sm text-ink-soft">
         This booking doesn&apos;t exist, or it belongs to another account.
       </p>
-      <Link href="/" className={buttonClass({ className: "mt-6" })}>
-        <span aria-hidden="true">← </span>All events
+      <Link href="/my-tickets" className={buttonClass({ className: "mt-6" })}>
+        <span aria-hidden="true">← </span>My tickets
       </Link>
     </div>
   );
