@@ -10,6 +10,7 @@ import {
 import { getUser, requireAuth, requireRole } from "../middleware/auth.js";
 import { HttpError, parseOrThrow } from "../lib/errors.js";
 import { decodeCursor, encodeCursor } from "../lib/cursor.js";
+import { withSeatsLeft } from "../lib/seats.js";
 export const eventsRouter = Router();
 
 // The ownership check (IDOR protection), used by every "my event" route.
@@ -70,7 +71,8 @@ eventsRouter.get("/", async (req, res) => {
   const last = events.at(-1);
 
   res.status(200).json({
-    events,
+    // Same seats-left calculation as GET /:id (lib/seats.ts)
+    events: await withSeatsLeft(events),
     nextCursor: hasMore && last ? encodeCursor(last) : null,
   });
 });
@@ -143,17 +145,9 @@ eventsRouter.get("/:id", async (req, res) => {
 
   if (!event) throw new HttpError(404, "Event not found");
 
-  const taken = await prisma.booking.aggregate({
-    where: {
-      eventId: event.id,
-      status: { in: ["HELD", "CONFIRMED"] },
-    },
-    _sum: { seats: true },
-  });
-
-  const seatsTaken = taken._sum.seats ?? 0;
-
-  res.status(200).json({ ...event, seatsLeft: event.seatLimit - seatsTaken });
+  // Same seats-left calculation as the list (lib/seats.ts)
+  const [withSeats] = await withSeatsLeft([event]);
+  res.status(200).json(withSeats);
 });
 
 // POST /api/v1/events → create an event (organisers only)

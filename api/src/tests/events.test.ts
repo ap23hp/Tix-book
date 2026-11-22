@@ -23,7 +23,11 @@ async function logInAs(
 }
 
 afterAll(async () => {
-  // Events first: a user can't be deleted while their events point at them
+  // Bookings, then events, then users: a row can't be deleted while
+  // another row still points at it
+  await prisma.booking.deleteMany({
+    where: { user: { email: { startsWith: "events-test-" } } },
+  });
   await prisma.event.deleteMany({
     where: { organiser: { email: { startsWith: "events-test-" } } },
   });
@@ -187,6 +191,99 @@ describe("GET /api/v1/events/:id", () => {
 
     expect(response.status).toBe(404);
     expect(response.body).toEqual({ error: "Event not found" });
+  });
+});
+
+describe("Seats left (list and event page use the same calculation)", () => {
+  const tag = `seatstest${runId}`;
+  let bookedId = "";
+  let emptyId = "";
+
+  beforeAll(async () => {
+    const organiser = await prisma.user.create({
+      data: {
+        name: "Seats organiser",
+        email: `events-test-seats-organiser-${runId}@example.com`,
+        role: "ORGANISER",
+      },
+    });
+    const attendee = await prisma.user.create({
+      data: {
+        name: "Seats attendee",
+        email: `events-test-seats-attendee-${runId}@example.com`,
+        role: "ATTENDEE",
+      },
+    });
+
+    const event = (title: string) => ({
+      title,
+      description: "Created by a test",
+      category: "Music",
+      format: "ONLINE" as const,
+      meetingLink: "https://example.com/meet",
+      status: "PUBLISHED" as const,
+      startsAt: new Date("2031-09-01T19:00:00Z"),
+      endsAt: new Date("2031-09-01T21:00:00Z"),
+      timezone: "Europe/London",
+      pricePence: 500,
+      seatLimit: 10,
+      organiserId: organiser.id,
+    });
+    const booked = await prisma.event.create({ data: event(`${tag} booked`) });
+    const empty = await prisma.event.create({ data: event(`${tag} empty`) });
+    bookedId = booked.id;
+    emptyId = empty.id;
+
+    const hour = 60 * 60 * 1000;
+    let n = 0;
+    const booking = (
+      seats: number,
+      status: "HELD" | "CONFIRMED" | "EXPIRED",
+      holdExpiresAt: Date | null,
+    ) => {
+      n += 1;
+      return {
+        seats,
+        status,
+        holdExpiresAt,
+        unitPricePence: 500,
+        reference: `T${runId}-${n}`,
+        idempotencyKey: `seats-test-${runId}-${n}`,
+        userId: attendee.id,
+        eventId: booked.id,
+      };
+    };
+
+    await prisma.booking.createMany({
+      data: [
+        booking(2, "CONFIRMED", null), // a 2-seat booking: takes 2, not 1
+        booking(3, "HELD", new Date(Date.now() + hour)), // hold still running: takes 3
+        booking(4, "HELD", new Date(Date.now() - hour)), // hold expired: takes 0
+        booking(1, "EXPIRED", null), // already marked expired: takes 0
+      ],
+    });
+  });
+
+  it("adds up seats, counting confirmed and running holds but not expired ones", async () => {
+    const response = await request(app).get(`/api/v1/events/${bookedId}`);
+    // 10 − (2 confirmed + 3 held) = 5
+    expect(response.body.seatsLeft).toBe(5);
+  });
+
+  it("gives the list exactly the same number as the event page", async () => {
+    const list = await request(app).get(`/api/v1/events?q=${tag}`);
+    const byId = new Map(
+      list.body.events.map((e: { id: string; seatsLeft: number }) => [
+        e.id,
+        e.seatsLeft,
+      ]),
+    );
+
+    const detail = await request(app).get(`/api/v1/events/${bookedId}`);
+    expect(byId.get(bookedId)).toBe(detail.body.seatsLeft);
+    expect(byId.get(bookedId)).toBe(5);
+    // No bookings at all: every seat is left
+    expect(byId.get(emptyId)).toBe(10);
   });
 });
 

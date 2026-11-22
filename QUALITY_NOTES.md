@@ -25,9 +25,9 @@ Testing approach, accessibility checks, known issues and things to review.
 - Public endpoints hide `meetingLink` using Prisma `omit`. The link should only appear on a booked ticket (later ticket).
   - Possible improvement: use `select` (allowlist) instead of `omit`, so any new private field is hidden by default.
 - GET /events/:id returns 404 for drafts and cancelled events, the same as for missing events (doesn't reveal hidden events).
-- Seats left = seatLimit − seats in HELD + CONFIRMED bookings, calculated with a database `aggregate` (decision 005).
-- ⚠️ Phase 4: a HELD booking whose hold has expired still counts as taken until the cron job marks it EXPIRED. Seats left may be slightly too low for up to a minute. Fix in phase 4: also check `holdExpiresAt > now` when counting held seats.
-- To do (phase 3): the events list doesn't include seats left yet. Adding it per event needs care to avoid an N+1 query problem.
+- Seats left = seatLimit − seats taken (decision 005). Taken = the sum of `seats` in CONFIRMED bookings plus HELD bookings whose `holdExpiresAt` is still in the future. One function (`api/src/lib/seats.ts`) is used by both the event list and the event page, so they can't disagree.
+- ✅ (phase 3) Expired holds no longer count as taken, even before the phase 4 cron job marks them EXPIRED.
+- ✅ (phase 3) The event list includes seats left, using one `groupBy` query for the whole page (no N+1). A test with a 2-seat booking and an expired hold checks the list and the event page give the same number.
 
 ## Events API testing
 - Tested manually with curl and the browser:
