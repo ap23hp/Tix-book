@@ -717,3 +717,50 @@ Both made tests fail, so the tests really protect them.
   session user, in one shared function."
 - "For a partial update I merge the patch with the saved row and validate the result,
   because rules that compare fields need both."
+
+## 2026-11-22 — My events page, edit form, and checking it in a real browser
+
+**One form, two modes:** `EventForm` creates (POST) when it gets no event, and edits
+(PATCH) when it gets one. Same fields and rules; edit mode adds a Status select,
+pre-filled `defaultValue`s and Cancel. `form.reset()` goes back to the defaultValues,
+which in edit mode is the saved event.
+
+**Times and time zones:** `<input type="datetime-local">` has no time zone. The browser
+reads it in ITS OWN zone, so the form shows and saves times in the browser's zone (not
+the event's `timezone` field). `toDateTimeLocal()` turns the saved UTC time into local
+"YYYY-MM-DDTHH:mm" (not `toISOString().slice(0, 16)`, which would show UTC).
+Known limit: an organiser travelling abroad sees the form in their current zone, while
+"My events" shows the event's own zone.
+
+**Testing time zones in Jest:** changing `process.env.TZ` inside a test does nothing:
+each test file gets its own copy of `process.env`. Set it once in `jest.config.ts`
+(before the workers start). My first London tests only passed because my laptop is in
+the UK: they would have failed on a computer anywhere else.
+
+**Always-present live regions vs tests:** the toast's empty `role="alert"` region is
+always in the page, so `findByRole("alert")` found it instead of the form's error.
+Fix: find the message by its text, then check its role.
+
+**Server-side calls as the user:** `lib/server-api.ts` forwards the `session` cookie by
+hand (server-to-server fetch doesn't send the browser's cookies). `notFound()` shows the
+same page for "doesn't exist" and "not yours" (the API answers 404 for both).
+
+**Next.js route types:** `PageProps<"/events/[id]/edit">` failed type-checking until
+`npx next typegen` ran: route types are generated from the `app/` folder by
+`next dev`, `next build` or `next typegen`.
+
+**Real-browser check of the Modal (things jsdom can't do):**
+- Opening: focus moves into the dialog (onto the × button), `:modal` matches.
+- Tab six times: focus cycled through the dialog's 3 buttons, never the page behind it.
+- Escape: closes, focus returns to the Cancel button, typed changes are kept.
+- Opens again after Escape (the prop ↔ dialog sync works in a real browser too).
+- Save: PATCH → "Event updated" toast still showing on /my-events.
+
+**Git lesson:** `git add` with one wrong path adds NOTHING, so a commit got the renames
+but not the edits. Always read `git status` before committing: `RM` / ` M` meant
+"staged rename, unstaged changes".
+
+**Interview lines:**
+- "datetime-local has no time zone; the browser uses its own, so I convert in the
+  browser's zone in both directions and test it with a pinned TZ."
+- "I check the focus trap in a real browser, because jsdom doesn't implement dialog."
