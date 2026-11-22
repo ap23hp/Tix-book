@@ -16,6 +16,8 @@ const config: Config = {
   coverageProvider: "v8",
   testEnvironment: "jsdom",
   setupFilesAfterEnv: ["<rootDir>/jest.setup.ts"],
+  // e2e/ holds Playwright tests; they run with `npm run test:e2e`, not Jest
+  testPathIgnorePatterns: ["/node_modules/", "<rootDir>/e2e/"],
   // Same "@/..." shortcut as tsconfig.json
   moduleNameMapper: {
     "^@/(.*)$": "<rootDir>/$1",
