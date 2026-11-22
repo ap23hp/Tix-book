@@ -47,7 +47,8 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           </a>
 
           <header className="border-b border-line">
-            <div className="mx-auto flex w-full max-w-300 items-center justify-between px-6 py-4">
+            {/* flex-wrap: on narrow screens the menu moves below the logo */}
+            <div className="mx-auto flex w-full max-w-300 flex-wrap items-center justify-between gap-x-6 gap-y-3 px-6 py-4">
               <Link href="/" className={`text-2xl ${logo}`}>
                 tixbook<span className="text-accent">.</span>
               </Link>

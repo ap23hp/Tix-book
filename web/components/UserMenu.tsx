@@ -17,8 +17,11 @@ export async function UserMenu() {
     );
   }
 
+  // On a phone the four items don't fit next to the logo: the header wraps
+  // this menu onto its own row (layout.tsx), and the menu itself can wrap.
+  // whitespace-nowrap keeps each item on one line ("My events", not "My / events").
   return (
-    <div className="flex items-center gap-4">
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 whitespace-nowrap">
       {user.role === "ORGANISER" && (
         <Link
           href="/my-events"
@@ -35,9 +38,10 @@ export async function UserMenu() {
           Create event
         </Link>
       )}
+      {/* A long name is cut short with "…" instead of pushing the menu wider */}
       <Link
         href="/account"
-        className="text-sm font-semibold text-ink hover:underline"
+        className="max-w-48 truncate text-sm font-semibold text-ink hover:underline"
       >
         Hi, {user.name}
       </Link>
