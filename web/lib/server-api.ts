@@ -2,7 +2,7 @@ import "server-only";
 import { cookies } from "next/headers";
 import { ApiError } from "@/lib/api";
 import { SESSION_COOKIE } from "@/lib/auth";
-import type { MyEvent, MyEventPage } from "@/lib/types";
+import type { Booking, MyEvent, MyEventPage } from "@/lib/types";
 
 // The most "My events" shows at once (the API's maximum page size)
 export const MY_EVENTS_LIMIT = 50;
@@ -43,6 +43,18 @@ export async function getMyEvent(id: string): Promise<MyEvent | null> {
   try {
     return await fetchAsUser<MyEvent>(
       `/api/v1/events/mine/${encodeURIComponent(id)}`,
+    );
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) return null;
+    throw error;
+  }
+}
+
+// null when the booking doesn't exist OR isn't mine (the API says 404 for both)
+export async function getBooking(id: string): Promise<Booking | null> {
+  try {
+    return await fetchAsUser<Booking>(
+      `/api/v1/bookings/${encodeURIComponent(id)}`,
     );
   } catch (error) {
     if (error instanceof ApiError && error.status === 404) return null;

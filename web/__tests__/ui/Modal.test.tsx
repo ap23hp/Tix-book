@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { Activity, useState } from "react";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { Modal } from "@/components/ui/Modal";
 
@@ -87,5 +87,29 @@ describe("Modal", () => {
     expect(dialog().open).toBe(false);
     // The parent closed it, so there's nothing to report back
     expect(onCloseSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe("Modal on a hidden page (<Activity>)", () => {
+  // Next.js hides the page you leave instead of removing it. A dialog
+  // opened with showModal() would stay modal while hidden, invisible, and
+  // make the whole NEW page inert: no clicks reach it (found in phase 4c,
+  // "Confirm booking" did nothing after booking from the dialog).
+  function Wrapped({ mode }: { mode: "visible" | "hidden" }) {
+    return (
+      <Activity mode={mode}>
+        <Page />
+      </Activity>
+    );
+  }
+
+  it("closes the real dialog when the page is hidden", () => {
+    const { rerender } = render(<Wrapped mode="visible" />);
+    fireEvent.click(screen.getByRole("button", { name: "Edit event" }));
+    expect(dialog().open).toBe(true);
+
+    rerender(<Wrapped mode="hidden" />);
+
+    expect(dialog().open).toBe(false);
   });
 });

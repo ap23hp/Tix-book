@@ -50,6 +50,37 @@ export type MyEvent = {
 };
 export type MyEventPage = { events: MyEvent[]; nextCursor: string | null };
 
+export type BookingStatus =
+  "HELD" | "CONFIRMED" | "EXPIRED" | "CANCELLED" | "REFUNDED";
+
+// A booking, as GET /api/v1/bookings/:id returns it (api/src/lib/booking-view.ts)
+export type Booking = {
+  id: string;
+  reference: string;
+  // A hold that has run out already comes back as EXPIRED
+  status: BookingStatus;
+  seats: number;
+  unitPricePence: number;
+  totalPence: number;
+  holdExpiresAt: string | null;
+  createdAt: string;
+  // The server's clock when it answered: the countdown starts from this,
+  // not from the browser's clock (decision 008)
+  serverTime: string;
+  event: {
+    id: string;
+    title: string;
+    startsAt: string;
+    endsAt: string;
+    timezone: string;
+    format: EventFormat;
+    venueName: string | null;
+    venueAddress: string | null;
+    // Only filled in once the booking is confirmed
+    meetingLink: string | null;
+  };
+};
+
 export type Role = "ATTENDEE" | "ORGANISER";
 
 // The logged-in user, as returned by GET /api/v1/auth/me
