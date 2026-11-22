@@ -29,6 +29,15 @@ export function Modal({ open, onClose, title, children }: Props) {
     if (!dialog) return;
     if (open && !dialog.open) dialog.showModal();
     if (!open && dialog.open) dialog.close();
+
+    // Cleanup: close the real dialog when this page is hidden. Next.js hides
+    // the page you leave (<Activity>) instead of removing it, and a dialog
+    // opened with showModal() stays modal while hidden: invisible, but it
+    // makes the whole new page inert, so no clicks reach it. The browser's
+    // "close" event then tells the parent (handleClose below).
+    return () => {
+      if (dialog.open) dialog.close();
+    };
   }, [open]);
 
   // Dialog → prop: the browser closed it by itself (Escape). Tell the parent,

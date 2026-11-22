@@ -59,6 +59,10 @@ export function BookingPanel({
     );
 
     if (result.ok) {
+      // Close the dialog first: this page stays in the DOM, hidden, and
+      // coming back to it shouldn't show the old dialog
+      setOpen(false);
+      setPending(false);
       router.push(`/bookings/${result.data.id}`);
       return;
     }

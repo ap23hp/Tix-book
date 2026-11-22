@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { BookingPanel } from "@/components/BookingPanel";
 
 const push = jest.fn();
@@ -64,6 +64,18 @@ describe("BookingPanel", () => {
     expect(sentBody()).toMatchObject({ seats: 3 });
     expect(sentBody().idempotencyKey).toMatch(/^[0-9a-f-]{36}$/);
     await new Promise((r) => setTimeout(r, 0));
+    expect(push).toHaveBeenCalledWith("/bookings/b1");
+  });
+
+  it("closes the dialog before going to the booking page", async () => {
+    mockFetchOnce(201, { id: "b1" });
+    renderPanel();
+    openAndSubmit();
+
+    // An open modal on the (hidden) event page would block the next page
+    await waitFor(() =>
+      expect(document.querySelector("dialog")?.open).toBe(false),
+    );
     expect(push).toHaveBeenCalledWith("/bookings/b1");
   });
 
