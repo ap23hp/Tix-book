@@ -8,7 +8,7 @@ An event and ticket booking app where organisers publish events, attendees book 
 
 ## The problem
 
-When many people try to book the last few seats of an event at the same moment, each request reads "5 seats left" before any of them has saved anything. Without protection, all of them succeed and the event is oversold. Tixbook is built around getting this right: exactly as many bookings as there are seats, a repeated click or retry counts once, and seats held by someone who doesn't finish are released after 5 minutes.
+When many people try to book the last few seats of an event at the same moment, each request reads "5 seats left" before any of them has saved anything. Without protection, all of them succeed and the event is oversold. Tixbook is built around getting this right: exactly as many bookings as there are seats, a repeated click or retry counts once, and seats held by someone who doesn't finish are released after 5 minutes. Paying works the same way: a booking is confirmed only by Stripe's signed webhook, the same webhook arriving twice changes nothing twice, and a payment that arrives after the seats were released is refunded automatically.
 
 ## Highlights
 
@@ -17,8 +17,11 @@ When many people try to book the last few seats of an event at the same moment, 
 - **Idempotency:** a key made in the browser plus a unique constraint, so double clicks and retries are one booking, even when two identical requests arrive at the same moment.
 - **Locking, measured, not guessed:** optimistic vs pessimistic with 40 simultaneous bookings. Optimistic was faster when most requests were refused (~1.9 s vs ~2.5 s), but nearly 2x slower with ~260 retries when everyone could get a seat (~5.9 s vs ~3.1 s), so the row lock stays ([decision 038](./DECISIONS.md)).
 - **Cursor (keyset) pagination** on `(startsAt, id)`: stable when events are added or removed, no duplicates or gaps ([decision 030](./DECISIONS.md)).
+- **Payments with Stripe (test mode):** Stripe Checkout, confirmed only by a **signed webhook**, never by the redirect page. Duplicate webhooks are handled twice over (handled-event ids, and the payment id stored on the booking under the row lock); a payment that arrives after the hold ended is confirmed if seats are still free, otherwise refunded with an idempotency key ([decisions 041–045](./DECISIONS.md)).
+- **Signed tickets:** the QR code is a JWT (HS256, with the algorithm, issuer, audience and expiry all checked). The door check also asks the database, because a JWT can't be revoked: a refunded ticket is refused ([decision 046](./DECISIONS.md)).
+- **Organiser dashboard:** confirmed, held and left seats and revenue per event, from the same counting rule as "seats left" in one grouped query; attendees by name only ([decision 048](./DECISIONS.md)).
 - **Accessibility:** axe (WCAG 2.2 A + AA) runs on 15 page states with no violations, plus a manual keyboard pass, a native `<dialog>` focus trap, and screen-reader live regions for toasts and the countdown.
-- **Tests:** 84 API tests (Jest + Supertest), 137 web unit and component tests (Jest + React Testing Library), 16 end-to-end tests (Playwright, including the full booking flow with two users).
+- **Tests:** 117 API tests (Jest + Supertest), 156 web unit and component tests (Jest + React Testing Library), 17 end-to-end tests (Playwright: the full booking and payment flow, two users at once, axe on every page state). Important tests were proven by breaking the code on purpose and watching them fail.
 
 ## Screenshots
 
@@ -46,9 +49,11 @@ flowchart LR
     V -->|"server-side fetch<br/>(session cookie forwarded)"| R
     R --> P["Prisma ORM"]
     P --> N[("Neon<br/>PostgreSQL")]
+    B -->|"pays on Stripe's page"| S["Stripe Checkout<br/>(test mode)"]
+    S -->|"signed webhook"| R
 ```
 
-The browser only ever talks to the Vercel site. Pages are Server Components that fetch from the API on the server, so the API's address stays in a server-only environment variable. Requests from the browser (logging in, booking) go to `/api/*` on the same site, and Vercel rewrites them to the Express API on Render. That keeps the session cookie first-party and means no CORS setup is needed. The API enforces every rule (who is logged in, roles, who owns an event, seats left), because the client can always be bypassed. Prisma talks to PostgreSQL on Neon; the seat lock is raw SQL, because Prisma has no `FOR UPDATE`.
+The browser only ever talks to the Vercel site. Pages are Server Components that fetch from the API on the server, so the API's address stays in a server-only environment variable. Requests from the browser (logging in, booking) go to `/api/*` on the same site, and Vercel rewrites them to the Express API on Render. That keeps the session cookie first-party and means no CORS setup is needed. The API enforces every rule (who is logged in, roles, who owns an event, seats left), because the client can always be bypassed. Payments go the other way round: the browser pays on Stripe's own page, and Stripe tells the API by calling its webhook directly (signed with a shared secret). That webhook is the only thing that confirms a booking. Prisma talks to PostgreSQL on Neon; the seat lock is raw SQL, because Prisma has no `FOR UPDATE`.
 
 ## Key decisions and trade-offs
 
@@ -62,6 +67,10 @@ Every decision, with the options considered, is in [DECISIONS.md](./DECISIONS.md
 | [032](./DECISIONS.md) Another organiser's event | 404, same as an unknown id | Less precise than 403, but never confirms the event exists |
 | [034](./DECISIONS.md) Double booking | Row lock on the event (`SELECT ... FOR UPDATE`) | Raw SQL (Prisma has no `FOR UPDATE`), and bookings for one event run one at a time |
 | [035](./DECISIONS.md) Expired holds | Lazy expiry, no cron job | The stored status can lag; seats left always uses the hold's end time |
+| [041](./DECISIONS.md) Paying after the hold ended | Re-check under the row lock: confirm if seats are free, else refund | A customer can occasionally be charged and refunded |
+| [042](./DECISIONS.md) Duplicate webhooks | Handled-event table **and** the payment id on the booking | One more table; a test proved the table alone isn't enough |
+| [046](./DECISIONS.md) Tickets | Signed JWT + a database check at the door | The door check needs the API; offline scanning would need public-key signing |
+| [048](./DECISIONS.md) Dashboard | Attendee names only, one counting rule | Organisers can't email attendees directly (yet) |
 
 ## Concurrency results
 
@@ -94,6 +103,11 @@ Real problems from running the live app, and what changed because of them:
 - **Login forms kept old passwords and errors after navigating away (16 Nov, #27).** With Cache Components, Next.js hides pages instead of removing them, so form state stays. Fix: clear login and sign-up forms when the page is hidden, plus a test that hides and shows the form.
 - **A Next.js security release (17 Nov, #32).** Upgraded to Next.js 16.4.6 the same day.
 
+Caught before release (phase 5):
+
+- **A migration file Postgres couldn't read.** Windows PowerShell 5.1 saved it with an invisible byte-order mark: `syntax error at or near "\u{feff}"`. Nothing was applied; I removed the 3 bytes and, before merging, checked the first bytes of the file in the commit itself.
+- **A dashboard count the tests didn't cover.** Breaking the count on purpose passed every test, because the dashboard saves expired holds before counting. The My events list doesn't, so it would have shown run-out holds as "held". A new test catches it.
+
 Caught before release (phase 4):
 
 - **"Confirm booking" did nothing.** The "Book tickets" dialog stayed open on the hidden event page (Next.js keeps pages you leave, hidden). A dialog opened with `showModal()` stays modal while hidden: invisible, but it made the booking page ignore every click. Fix: the Modal closes its dialog when its page is hidden, and the booking dialog closes before navigating. Found in a real browser; tests now cover it.
@@ -108,6 +122,7 @@ Open questions I haven't solved yet are in [QUALITY_NOTES.md](./QUALITY_NOTES.md
 | Frontend | Next.js 16 (App Router, Server Components, Cache Components), React 19, TypeScript, Tailwind CSS v4 |
 | API | Node.js, Express 5, TypeScript, Zod validation |
 | Auth | Database sessions (own code), Argon2id password hashing, Google login with Arctic |
+| Payments and tickets | Stripe Checkout and webhooks (test mode), JWT tickets with jose, QR codes with qrcode |
 | Database | PostgreSQL (Neon) with Prisma ORM and migrations |
 | Tests | Jest + Supertest (API), Jest + React Testing Library (web), Playwright + axe (end-to-end and accessibility) |
 | Hosting | Vercel (frontend), Render (API), Neon (database), all on free plans |
@@ -131,6 +146,12 @@ npx prisma db seed --config prisma7.config.ts   # ⚠️ deletes all data first 
 npm run dev
 ```
 
+Payments (optional): put your Stripe **test** keys and a `TICKET_JWT_SECRET` in `api/.env` (see `api/.env.example`), then forward Stripe's webhooks to your local API in another terminal. It prints the `STRIPE_WEBHOOK_SECRET` to use:
+
+```bash
+stripe listen --forward-to localhost:4000/api/v1/payments/webhook
+```
+
 ```bash
 # Frontend (port 3000), in a second terminal
 cd web
@@ -143,9 +164,9 @@ npm run dev
 
 | Where | Command | What runs |
 |---|---|---|
-| `api/` | `npm test` | 84 API tests (Jest + Supertest). They use the dev database and delete their own test data. |
-| `web/` | `npm test` | 137 unit and component tests (Jest + React Testing Library) |
-| `web/` | `npm run test:e2e` | 16 end-to-end and accessibility tests (Playwright + axe). Starts the local API and web app, or reuses running ones. Run `npx playwright install chromium` once first. |
+| `api/` | `npm test` | 117 API tests (Jest + Supertest). They use the dev database and delete their own test data. Stripe is never called: its network calls are replaced, and webhooks are signed with a test secret. |
+| `web/` | `npm test` | 156 unit and component tests (Jest + React Testing Library) |
+| `web/` | `npm run test:e2e` | 17 end-to-end and accessibility tests (Playwright + axe). Starts the local API and web app, or reuses running ones. Run `npx playwright install chromium` once first. The payment test needs Stripe set up locally (it skips otherwise). |
 | `api/`, `web/` | `npm run lint` | ESLint; in `web/` this includes the jsx-a11y accessibility rules |
 | `api/` | `npm run lab:locking` | The locking benchmark (dev database only) |
 
@@ -157,13 +178,13 @@ npm run dev
 | 2 | Auth and security: login, roles, OAuth, CSRF | ✅ Done |
 | 3 | Search, pagination, my events and editing, UI kit, accessibility, end-to-end tests | ✅ Done |
 | 4 | Booking and concurrency: 5-minute seat holds, row locking, idempotency, "My tickets" | ✅ Done |
-| 5 | Payments with Stripe (test mode) and webhooks | Next |
-| 6 | Background jobs: confirmation and reminder emails, retries | Planned |
+| 5 | Payments: Stripe Checkout, signed webhooks, refunds, signed ticket QR codes, organiser dashboard | ✅ Done |
+| 6 | Background jobs: confirmation and reminder emails, retries | Next |
 | 7 | Performance: indexes, caching, rate limiting, Core Web Vitals | Planned |
 | 8 | Docker, CI/CD, monitoring | Planned |
 | 9 | Real users, load test, "How I'd scale this" | Planned |
 
-Until phase 5, "Confirm booking" stands in for paying.
+Payments use Stripe's **test mode**: no real money. Pay with the test card `4242 4242 4242 4242`, any future date and any CVC.
 
 ## Project docs
 
