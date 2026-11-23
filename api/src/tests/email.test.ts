@@ -264,6 +264,28 @@ describe("email templates", () => {
     );
   });
 
+  // Render runs in UTC. The email must show London time whatever the
+  // server's own time zone is: 19:00 BST in summer is 18:00 UTC.
+  // The tests run in UTC (jest.global-setup.js), so formatting with the
+  // server's zone by mistake would show 18:00 here and fail.
+  it("shows London time on a UTC server, in summer (BST) and winter (GMT)", () => {
+    expect(Intl.DateTimeFormat().resolvedOptions().timeZone).toBe("UTC");
+    // Summer (BST, UTC+1)
+    expect(
+      formatEventTime(new Date("2026-07-01T18:00:00Z"), "Europe/London"),
+    ).toBe("Wednesday, 1 July 2026 at 19:00");
+    // Winter (GMT, UTC+0)
+    expect(
+      formatEventTime(new Date("2026-12-05T19:00:00Z"), "Europe/London"),
+    ).toBe("Saturday, 5 December 2026 at 19:00");
+    // The whole email, not just the helper
+    const { text } = bookingConfirmedEmail(
+      { ...data, startsAt: new Date("2026-07-01T18:00:00Z") },
+      web,
+    );
+    expect(text).toContain("When: Wednesday, 1 July 2026 at 19:00");
+  });
+
   it("escapeHtml escapes the five special characters", () => {
     expect(escapeHtml(`<a href="x" title='y'>&</a>`)).toBe(
       "&lt;a href=&quot;x&quot; title=&#39;y&#39;&gt;&amp;&lt;/a&gt;",
