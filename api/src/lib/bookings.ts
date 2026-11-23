@@ -94,39 +94,6 @@ function isUniqueConstraintError(err: unknown): boolean {
   );
 }
 
-// Confirm a hold: the stand-in for payment until Stripe in phase 5
-// (decision 036). It takes the same event row lock as new bookings and reads
-// the clock after getting it. Otherwise, right at the moment a hold expires,
-// a new booking could count those seats as free while this confirm still
-// counts the hold as running, and the seats would be sold twice.
-export async function confirmHold(booking: { id: string; eventId: string }) {
-  return prisma.$transaction(async (tx) => {
-    await lockEvent(tx, booking.eventId);
-    const now = new Date();
-
-    // Only a HELD booking whose hold is still running can be confirmed
-    const { count } = await tx.booking.updateMany({
-      where: { id: booking.id, status: "HELD", holdExpiresAt: { gt: now } },
-      data: { status: "CONFIRMED" },
-    });
-    const current = await tx.booking.findUniqueOrThrow({
-      where: { id: booking.id },
-    });
-
-    // Confirming twice (a double click) is fine: same answer again
-    if (count === 1 || current.status === "CONFIRMED") {
-      return { booking: current, now };
-    }
-    if (current.status === "HELD" || current.status === "EXPIRED") {
-      throw new HttpError(
-        409,
-        "Your hold has expired and the seats were released",
-      );
-    }
-    throw new HttpError(409, "This booking can't be confirmed");
-  }, TRANSACTION_OPTIONS);
-}
-
 // Hold seats (paid event) or book them straight away (free event).
 export async function holdSeats(
   input: HoldInput,
