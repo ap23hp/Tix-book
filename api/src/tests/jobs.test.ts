@@ -16,9 +16,9 @@ import {
   createQueues,
   enqueueBookingConfirmedEmail,
   QUEUES,
-  runBookingConfirmedJob,
+  runEmailJob,
   startJobs,
-  startWorkers,
+  startWorker,
   stopJobs,
 } from "../lib/jobs.js";
 import { FakeEmailSender } from "./fake-email-sender.js";
@@ -167,7 +167,7 @@ describe("what a job's result means to the queue", () => {
   const job = { id: "job-1", data: { bookingId: "b-1" } };
 
   it("sent or skipped → completed", async () => {
-    const result = await runBookingConfirmedJob(job, async () => ({
+    const result = await runEmailJob(job, async () => ({
       status: "skipped",
       reason: "sandbox",
     }));
@@ -179,14 +179,14 @@ describe("what a job's result means to the queue", () => {
   });
 
   it("an error a retry can fix → failed (pg-boss retries it)", async () => {
-    const result = await runBookingConfirmedJob(job, async () => {
+    const result = await runEmailJob(job, async () => {
       throw new EmailSendError("Resend answered 503 service_unavailable", true);
     });
     expect(result.status).toBe("failed");
   });
 
   it("an error a retry can't fix → straight to the dead letter queue", async () => {
-    const result = await runBookingConfirmedJob(job, async () => {
+    const result = await runEmailJob(job, async () => {
       throw new EmailSendError("Resend answered 403 validation_error", false);
     });
     expect(result).toEqual({
@@ -197,7 +197,7 @@ describe("what a job's result means to the queue", () => {
   });
 
   it("anything else → failed, with no details stored on the job", async () => {
-    const result = await runBookingConfirmedJob(job, async () => {
+    const result = await runEmailJob(job, async () => {
       throw new Error("connection to secret-host.example failed");
     });
     expect(result).toEqual({
@@ -227,10 +227,10 @@ describe("retries and the dead letter queue (real worker)", () => {
       retryBackoff: true,
       retryDelayMax: 2,
     });
-    const workerId = await startWorkers(
+    const workerId = await startWorker(
       boss,
       names.main,
-      (job) => runBookingConfirmedJob(job, send),
+      (job) => runEmailJob(job, send),
       0.5,
     );
     return { names, workerId };

@@ -1,6 +1,10 @@
 import { fromPrisma, PgBoss, type JobResult } from "pg-boss";
 import type { Prisma } from "../generated/prisma/client.js";
-import { sendBookingConfirmedEmail } from "./booking-emails.js";
+import {
+  reminderTime,
+  sendBookingConfirmedEmail,
+  sendEventReminderEmail,
+} from "./booking-emails.js";
 import { EmailSendError } from "./email.js";
 
 // Background jobs with pg-boss, a queue that lives in our own Postgres
@@ -9,6 +13,7 @@ import { EmailSendError } from "./email.js";
 
 export const QUEUES = {
   bookingConfirmed: "email.booking-confirmed",
+  eventReminder: "email.event-reminder",
   // Jobs that failed every retry, or failed in a way a retry can't fix.
   // Kept to look at (and redrive), never retried on their own.
   deadLetter: "email.dead-letter",
@@ -31,7 +36,7 @@ export const EMAIL_QUEUE_OPTIONS = {
 
 // How often an idle worker asks the database for new jobs. pg-boss's
 // default is 2 s. A confirmation email a few seconds late is fine, and
-// fewer queries is better on Neon's free plan (decision 050, measured in 6c).
+// fewer queries is better on Neon's free plan (decision 050).
 const POLLING_INTERVAL_SECONDS = 5;
 
 // Tests use their own schema, so a test job can never be picked up by the
@@ -75,8 +80,21 @@ export function startJobs(
     // 'error' events. Without a listener Node would crash the process.
     boss.on("error", (err) => console.error("[jobs] pg-boss error:", err));
     await boss.start();
-    await createQueues(boss);
-    if (options.workers) await startWorkers(boss);
+    // Both email queues share one dead letter queue
+    await createQueues(boss, {
+      main: QUEUES.bookingConfirmed,
+      deadLetter: QUEUES.deadLetter,
+    });
+    await createQueues(boss, {
+      main: QUEUES.eventReminder,
+      deadLetter: QUEUES.deadLetter,
+    });
+    if (options.workers) {
+      await startWorker(boss, QUEUES.bookingConfirmed, (job) =>
+        runEmailJob(job, sendBookingConfirmedEmail),
+      );
+      await startWorker(boss, QUEUES.eventReminder, runReminderJob);
+    }
     return boss;
   })();
   return ready;
@@ -94,10 +112,7 @@ export async function stopJobs(): Promise<void> {
 // createQueue isn't documented as safe to repeat, so check first.
 export async function createQueues(
   boss: PgBoss,
-  names: { main: string; deadLetter: string } = {
-    main: QUEUES.bookingConfirmed,
-    deadLetter: QUEUES.deadLetter,
-  },
+  names: { main: string; deadLetter: string },
   options: Partial<typeof EMAIL_QUEUE_OPTIONS> = {},
 ): Promise<void> {
   if (!(await boss.getQueue(names.deadLetter))) {
@@ -128,6 +143,44 @@ export async function enqueueBookingConfirmedEmail(
   await boss.send(QUEUES.bookingConfirmed, data, { db: fromPrisma(tx) });
 }
 
+// Called inside the same transaction, for the reminder. pg-boss won't hand
+// the job to a worker before `startAfter`. Booked less than a day before
+// the event: no reminder, the confirmation is enough.
+export async function enqueueEventReminderEmail(
+  tx: Prisma.TransactionClient,
+  bookingId: string,
+  startsAt: Date,
+  now: Date = new Date(),
+): Promise<void> {
+  const remindAt = reminderTime(startsAt);
+  if (remindAt <= now) return;
+  const boss = await startJobs();
+  const data: BookingEmailJob = { bookingId };
+  await boss.send(QUEUES.eventReminder, data, {
+    db: fromPrisma(tx),
+    startAfter: remindAt,
+  });
+}
+
+// The reminder job: send it, unless the event moved later since the job
+// was queued; then queue a new one for the new time and finish this one.
+export async function runReminderJob(job: {
+  id: string;
+  data: BookingEmailJob;
+}): Promise<JobResult> {
+  return runEmailJob(job, async (bookingId) => {
+    const outcome = await sendEventReminderEmail(bookingId);
+    if (outcome.status !== "too early") return outcome;
+    const boss = await startJobs();
+    await boss.send(
+      QUEUES.eventReminder,
+      { bookingId },
+      { startAfter: outcome.remindAt },
+    );
+    return { status: "rescheduled", remindAt: outcome.remindAt };
+  });
+}
+
 // What one email job turns into:
 // - sent, or skipped on purpose (sandbox, no key, booking gone) → completed
 // - an error a retry could fix (timeout, 5xx, rate limit, database) → failed,
@@ -135,9 +188,9 @@ export async function enqueueBookingConfirmedEmail(
 // - an error a retry can't fix (bad key, refused address) → straight to the
 //   dead letter queue, skipping the remaining retries
 // The stored output never holds an address, a key or Resend's own message.
-export async function runBookingConfirmedJob(
+export async function runEmailJob(
   job: { id: string; data: BookingEmailJob },
-  send: (bookingId: string) => Promise<unknown> = sendBookingConfirmedEmail,
+  send: (bookingId: string) => Promise<unknown>,
 ): Promise<JobResult> {
   try {
     const outcome = await send(job.data.bookingId);
@@ -152,7 +205,7 @@ export async function runBookingConfirmedJob(
     }
     // Anything else (e.g. the database was unreachable): log it here, keep
     // the stored output generic, and let the retries try again
-    console.error(`[jobs] ${QUEUES.bookingConfirmed} ${job.id} failed:`, err);
+    console.error(`[jobs] job ${job.id} failed:`, err);
     return {
       id: job.id,
       status: "failed",
@@ -161,10 +214,10 @@ export async function runBookingConfirmedJob(
   }
 }
 
-export async function startWorkers(
+export async function startWorker(
   boss: PgBoss,
-  queue: string = QUEUES.bookingConfirmed,
-  run: typeof runBookingConfirmedJob = runBookingConfirmedJob,
+  queue: string,
+  run: (job: { id: string; data: BookingEmailJob }) => Promise<JobResult>,
   pollingIntervalSeconds: number = POLLING_INTERVAL_SECONDS,
 ): Promise<string> {
   // One job at a time is plenty at this size. perJobResults lets the

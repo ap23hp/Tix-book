@@ -14,7 +14,7 @@ import { prisma } from "../lib/prisma.js";
 import { createSession, SESSION_COOKIE } from "../lib/session.js";
 import { newReference } from "../lib/bookings.js";
 import { stripeGateway } from "../lib/stripe.js";
-import { stopJobs } from "../lib/jobs.js";
+import { QUEUES, stopJobs } from "../lib/jobs.js";
 import { deleteEmailJobsFor, emailJobsFor } from "./job-helpers.js";
 
 const runId = Date.now();
@@ -291,6 +291,12 @@ describe("POST /api/v1/payments/webhook", () => {
     expect(refunds).toHaveLength(0);
     // Its confirmation email is queued, in the same transaction
     expect(await emailJobsFor(booking.id)).toHaveLength(1);
+    // ...and its reminder, for 24 hours before the event
+    const reminders = await emailJobsFor(booking.id, QUEUES.eventReminder);
+    expect(reminders).toHaveLength(1);
+    expect(reminders[0]!.startAfter).toEqual(
+      new Date(event.startsAt.getTime() - 24 * 60 * 60_000),
+    );
   });
 
   it("does nothing twice when the same event arrives again", async () => {
@@ -368,8 +374,9 @@ describe("POST /api/v1/payments/webhook", () => {
 
     expect(await status(late.id)).toBe("REFUNDED");
     expect(refunds).toEqual([paymentIntent]);
-    // Refunded, not confirmed: no "confirmed" email
+    // Refunded, not confirmed: no "confirmed" email, no reminder
     expect(await emailJobsFor(late.id)).toHaveLength(0);
+    expect(await emailJobsFor(late.id, QUEUES.eventReminder)).toHaveLength(0);
   });
 
   it("retries a refund that failed, when Stripe sends the event again", async () => {
