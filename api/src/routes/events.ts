@@ -10,8 +10,8 @@ import {
 import { getUser, requireAuth, requireRole } from "../middleware/auth.js";
 import { HttpError, parseOrThrow } from "../lib/errors.js";
 import { decodeCursor, encodeCursor } from "../lib/cursor.js";
-import { withSeatsLeft } from "../lib/seats.js";
-import { holdSeats } from "../lib/bookings.js";
+import { seatSummaries, withSeatsLeft } from "../lib/seats.js";
+import { expireHolds, holdSeats } from "../lib/bookings.js";
 import { bookingEventSelect, bookingView } from "../lib/booking-view.js";
 import { holdSeatsSchema } from "../schemas/booking.js";
 export const eventsRouter = Router();
@@ -120,9 +120,78 @@ eventsRouter.get(
     const events = hasMore ? rows.slice(0, limit) : rows;
     const last = events.at(-1);
 
+    // Confirmed / held / left for the whole page in one query (no N+1)
+    const summaries = await seatSummaries(events);
+
     res.status(200).json({
-      events,
+      // Revenue is only on the event's own dashboard, not in the list
+      events: events.map((event) => {
+        const seats = summaries.get(event.id)!;
+        return {
+          ...event,
+          seatsConfirmed: seats.seatsConfirmed,
+          seatsHeld: seats.seatsHeld,
+          seatsLeft: seats.seatsLeft,
+        };
+      }),
       nextCursor: hasMore && last ? encodeCursor(last) : null,
+    });
+  },
+);
+
+// The most bookings the dashboard returns at once (newest first)
+const EVENT_BOOKINGS_LIMIT = 200;
+
+// GET /api/v1/events/mine/:id/bookings → the dashboard for one of my events:
+// { event, summary, bookings, hasMore }. Attendees are shown by name only:
+// the organiser doesn't need their email to run the door (decision 048).
+eventsRouter.get(
+  "/mine/:id/bookings",
+  requireAuth,
+  requireRole("ORGANISER"),
+  async (req, res) => {
+    const event = await findOwnEvent(req.params.id, getUser(res).id);
+    const now = new Date();
+
+    // Save the EXPIRED status for holds that ran out (decision 035)
+    await expireHolds(prisma, { eventId: event.id }, now);
+
+    const [summaries, rows] = await Promise.all([
+      seatSummaries([event], { now }),
+      prisma.booking.findMany({
+        where: { eventId: event.id },
+        include: { user: { select: { name: true } } },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        take: EVENT_BOOKINGS_LIMIT + 1,
+      }),
+    ]);
+    const hasMore = rows.length > EVENT_BOOKINGS_LIMIT;
+
+    res.status(200).json({
+      event: {
+        id: event.id,
+        title: event.title,
+        status: event.status,
+        startsAt: event.startsAt,
+        timezone: event.timezone,
+        seatLimit: event.seatLimit,
+        pricePence: event.pricePence,
+      },
+      summary: summaries.get(event.id),
+      bookings: rows.slice(0, EVENT_BOOKINGS_LIMIT).map((booking) => {
+        // bookingView decides the status the same way as everywhere else
+        const view = bookingView(booking, null, now);
+        return {
+          id: view.id,
+          reference: view.reference,
+          status: view.status,
+          seats: view.seats,
+          totalPence: view.totalPence,
+          createdAt: view.createdAt,
+          attendeeName: booking.user.name,
+        };
+      }),
+      hasMore,
     });
   },
 );
