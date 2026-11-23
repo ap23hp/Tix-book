@@ -709,22 +709,45 @@ is tested; only the last step is skipped.
 Revisit if: real users arrive (phase 9): buy a domain, verify it, set the allowlist to `*`.
 
 ## 050 — Background jobs: pg-boss (a queue in Postgres), not Redis
-Date: 2026-11-23
+Date: 2026-11-23 (facts checked against the docs the same day)
 Options: (1) pg-boss, in the Postgres we already have
-         (2) BullMQ + Redis (Upstash free: 500K commands/month)
+         (2) BullMQ + Redis (Upstash free plan)
 Chose: 1.
 Why:
-- The job can be saved in the same transaction as the booking (pg-boss's `db` option on
-  `send`): a confirmed booking always has its email job, a rolled-back one never does. With
-  Redis, the booking could commit and the job be lost (or the other way round).
-- It has what phase 6 needs: retries with exponential backoff, a dead letter queue, delayed
-  jobs (`startAfter`) for reminders, cron, and singleton keys against duplicates.
-- No new service, account or secret. Upstash's own BullMQ page says BullMQ uses Redis
-  "even when there is no queue activity", which eats a command-based free plan.
-- Both DATABASE_URLs are direct connections (not Neon's PgBouncer pooler), which pg-boss's
-  session features need.
-Trade-off: a Postgres queue handles less throughput than Redis (far more than we need), and
-it polls the database (every 2 s by default), which keeps Neon awake while the API is awake.
-Render's sleep and Neon's 100 CU-hours/month must be planned around (phase 6c).
-Revisit if: job volume grows large, or Redis arrives anyway (phase 7) and the queue's
-database load matters.
+- The job can be saved in the same transaction as the booking: `send()` takes a `db`
+  option ("you can use your own" adapter: `executeSql(text, values)`) [jobs]. So a
+  confirmed booking always has its email job, and a rolled-back one never does.
+- It has what phase 6 needs: `retryLimit`, `retryDelay` and `retryBackoff` ("exponential
+  backoff retries based on retryDelay") [jobs]; a dead letter queue, set as the `deadLetter`
+  option on `createQueue()` [queues]; delayed jobs with `startAfter` [jobs]; cron with
+  `schedule()` [scheduling]; and `singletonKey`, one job per key [jobs].
+- No new service, account or secret: its tables go in a schema named `pgboss` by
+  default [constructor]. Needs Node 22.12+ and PostgreSQL 13+ [readme].
+- Redis on Upstash's free plan has 500K commands per month [upstash-pricing], and
+  Upstash's BullMQ page says "BullMQ accesses Redis regularly, even when there is no queue
+  activity" [upstash-bullmq].
+**Connections:** both of our DATABASE_URLs are direct connections, not Neon's pooler.
+Neon's pooler is PgBouncer in transaction mode and doesn't support LISTEN/NOTIFY or
+session-level advisory locks [neon-pooling]. pg-boss uses LISTEN/NOTIFY only if
+`useListenNotify` is on (default false), and that doesn't work through PgBouncer in
+transaction mode [constructor]. The only advisory lock its docs mention is
+`pg_advisory_xact_lock`, which is transaction-scoped [backends]. So the pooler would
+probably work too; direct is simply what we have.
+Trade-off: workers poll the database, by default "1 job every 2 seconds" [workers]. Neon's
+free plan has 100 CU-hours per project per month and scales to zero only after 5 minutes
+of inactivity, which can't be changed on Free [neon-plans]. My reasoning (to be measured
+in 6c): while the API is awake, polling every 2 s means Neon is never idle for 5 minutes.
+Render's sleep and that budget must be planned together.
+Revisit if: polling uses too much of Neon's budget, or Redis arrives anyway (phase 7).
+Sources:
+- [jobs] https://pgboss.io/api/jobs
+- [queues] https://pgboss.io/api/queues
+- [scheduling] https://pgboss.io/api/scheduling
+- [constructor] https://pgboss.io/api/constructor
+- [workers] https://pgboss.io/api/workers
+- [backends] https://pgboss.io/database-backends
+- [readme] https://github.com/timgit/pg-boss
+- [neon-pooling] https://neon.com/docs/connect/connection-pooling
+- [neon-plans] https://neon.com/docs/introduction/plans
+- [upstash-pricing] https://upstash.com/pricing/redis
+- [upstash-bullmq] https://upstash.com/docs/redis/integrations/bullmq
