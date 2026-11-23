@@ -5,6 +5,7 @@ import { lockEvent } from "./bookings.js";
 import { prisma } from "./prisma.js";
 import { seatsTakenByEvent } from "./seats.js";
 import { stripeGateway } from "./stripe.js";
+import { webUrl } from "./web-url.js";
 
 // Stripe's shortest allowed Checkout Session life is 30 minutes after it is
 // created (by Stripe's clock). One extra minute so a small clock difference
@@ -12,11 +13,6 @@ import { stripeGateway } from "./stripe.js";
 const CHECKOUT_MINUTES = 31;
 
 const TRANSACTION_OPTIONS = { maxWait: 10_000, timeout: 10_000 };
-
-// Where Stripe sends the user back to. Locally the web app on port 3000.
-function webUrl(): string {
-  return (process.env.WEB_URL ?? "http://localhost:3000").replace(/\/$/, "");
-}
 
 type CheckoutBooking = Booking & { event: { title: string } | null };
 
