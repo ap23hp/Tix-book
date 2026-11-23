@@ -65,6 +65,27 @@ test("book seats, pay, and find the ticket on My tickets", async ({
     page.getByRole("link", { name: "Join the event online" }),
   ).toBeVisible();
 
+  // The ticket: a QR code made from a signed token (decision 023)
+  await expect(
+    page.getByRole("img", { name: /^Ticket QR code for booking TIX-/ }),
+  ).toBeVisible();
+
+  // At the door: the organiser checks the attendee's ticket
+  const ticketResponse = await page.request.get(
+    `/api/v1/bookings/${bookingId}/ticket`,
+  );
+  const { token } = await ticketResponse.json();
+  const atTheDoor = await request.post("/api/v1/tickets/verify", {
+    data: { token },
+  });
+  expect(atTheDoor.status()).toBe(200);
+  expect(await atTheDoor.json()).toMatchObject({ valid: true, seats: 2 });
+  // The attendee can't check tickets (only organisers can)
+  const notAllowed = await page.request.post("/api/v1/tickets/verify", {
+    data: { token },
+  });
+  expect(notAllowed.status()).toBe(403);
+
   // My tickets shows it, confirmed
   await page.getByRole("link", { name: "My tickets" }).click();
   const ticket = page.getByRole("article").filter({ hasText: title });
