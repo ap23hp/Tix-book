@@ -622,3 +622,42 @@ I paid once by hand with the 4242 test card through `stripe listen` (23 Nov), an
 webhook confirmed the booking, which covers what the test skips.
 Trade-off: the e2e webhook payload only has the fields we read; if Stripe changed the event
 shape, only the manual check would notice.
+
+## 046 — Tickets: a signed JWT, checked against the database at the door
+Date: 2026-11-23
+Decision 023 chose a signed JWT for ticket QR codes. The details:
+- **What's inside:** booking id (`sub`), reference, event id, seats, issuer `tixbook`,
+  audience `ticket`, issued-at and expiry. No names or emails: anyone can decode a JWT
+  without the secret (it's only base64).
+- **Signing:** HS256 (HMAC-SHA256) with `TICKET_JWT_SECRET`, a different value locally and
+  on Render, separate from everything else. Library: `jose`.
+- **Expiry:** a day after the event ends, so an old ticket can't be reused.
+- **Verifying:** only HS256 is accepted (no "alg: none" or algorithm switching), and the
+  issuer and audience must match, so a token signed for another purpose with the same
+  secret can't be used as a ticket.
+- **The door check also asks the database** (`POST /api/v1/tickets/verify`, the event's
+  organiser only): the booking must still be CONFIRMED.
+Options for revocation: (1) trust the signature alone (works offline)
+                         (2) signature, then the database (chosen)
+                         (3) a list of revoked token ids
+Why 2: a JWT can't be taken back. A ticket for a booking that was refunded afterwards
+(decision 041) still has a valid signature. The signature check still matters: forged or
+edited tickets are refused before any database work, and a scanner with no connection
+could fall back to the signature alone.
+Trade-off: the door check needs the API to be up. HS256 means the same secret signs and
+verifies, so an offline scanner would need the secret; with public-key signing (ES256),
+scanners could verify without being able to make tickets.
+Revisit if: offline scanning is needed (switch to ES256 and give scanners the public key).
+
+## 047 — The QR code is made on the server
+Date: 2026-11-23
+Options: (1) send the token to the browser and draw the QR there (e.g. qrcode.react)
+         (2) make an SVG on the server and send it as an <img> data URL
+Chose: 2. The booking page is already a Server Component that fetches the booking; it
+fetches the token the same way and turns it into an SVG with `qrcode`. No QR library is
+sent to the browser, and the image has alt text with the reference.
+Details: error correction "M" (still scans with about 15% damaged, e.g. a cracked screen),
+and a white background even in dark mode, because scanners need the contrast.
+If the ticket can't be made (e.g. the secret is missing), the page still shows the booking
+and its reference, which works at the door too.
+Trade-off: the SVG is part of the page HTML (a few KB).

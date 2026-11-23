@@ -7,6 +7,7 @@ import type { ErrorRequestHandler } from "express";
 import { blockCrossSiteWrites } from "./middleware/csrf.js";
 import { HttpError } from "./lib/errors.js";
 import { paymentsRouter } from "./routes/payments.js";
+import { ticketsRouter } from "./routes/tickets.js";
 const app = express();
 
 // Stripe webhooks first: they need the raw body for the signature check,
@@ -24,6 +25,7 @@ app.get("/health", (_req, res) => {
 app.use("/api/v1/events", eventsRouter);
 app.use("/api/v1/auth", authRouter);
 app.use("/api/v1/bookings", bookingsRouter);
+app.use("/api/v1/tickets", ticketsRouter);
 
 // Unknown routes → 404 JSON (instead of Express's default HTML page)
 app.use((_req, res) => {

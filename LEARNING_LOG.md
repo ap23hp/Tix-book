@@ -992,3 +992,39 @@ checkout.stripe.com, then signs a webhook itself the way Stripe does (HMAC-SHA25
   trusts Stripe's signed webhook."
 - "I poll with a cleanup that aborts the request and clears the timer, so leaving the page
   can't leave requests running."
+
+## 2026-11-23 — Phase 5c: the ticket QR code is a signed JWT
+
+**JWT in practice:** three base64url parts, `header.payload.signature`. The payload is
+readable by anyone, so it holds ids only. The signature is an HMAC of the first two parts
+with our secret, so changing the seats from 2 to 10 breaks it (a test does exactly that).
+
+**What the verifier must pin:** the algorithm (HS256 only; an `alg: none` token is
+refused), the issuer and the audience (a token signed for something else with the same
+secret isn't a ticket), and the expiry.
+
+**Revocation:** a JWT can't be taken back. A ticket for a refunded booking still has a
+perfect signature, so the door check also asks the database. Removing that check failed
+the "refunded since" test.
+
+**Tests broken on purpose:** decoding without checking the signature failed 3 tests
+(different secret, wrong audience, alg none); no database check failed 1; no audience
+check failed 1.
+
+**My mistake:** I backed up `lib/tickets.ts` and `routes/tickets.ts` into one folder.
+Same file name, so the second copy was refused, and "restoring" after break 2 copied
+the lib file over the route file. The next run failed to start, which is how I noticed.
+I rewrote the route file from the version I had written and re-ran break 3. Lesson: give
+backups unique names, and check that restoring worked (`cmp`) before trusting the next
+result.
+
+**Jest environments:** the QR helper runs on the server, and jsdom has no `TextEncoder`,
+so its test file runs in Node (`@jest-environment node`). The shared setup file assumed a
+browser (`HTMLDialogElement`) and now skips that part when there's no DOM.
+
+**Interview lines:**
+- "My tickets are signed JWTs: the signature proves we issued them, and because a JWT
+  can't be revoked, the door check also asks the database whether the booking is still
+  confirmed."
+- "A verifier must pin the algorithm, issuer and audience, or a token made for something
+  else could be accepted."

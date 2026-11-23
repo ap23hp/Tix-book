@@ -66,3 +66,18 @@ export async function getBooking(id: string): Promise<Booking | null> {
 export function getMyBookings() {
   return fetchAsUser<{ bookings: Booking[] }>("/api/v1/bookings/mine");
 }
+
+// The signed ticket (a JWT) for my CONFIRMED booking, or null if there is
+// none (not confirmed yet, or tickets aren't set up). The page still works
+// without it: the booking reference is shown too.
+export async function getTicketToken(id: string): Promise<string | null> {
+  try {
+    const { token } = await fetchAsUser<{ token: string }>(
+      `/api/v1/bookings/${encodeURIComponent(id)}/ticket`,
+    );
+    return token;
+  } catch (error) {
+    console.error("Couldn't load the ticket", error);
+    return null;
+  }
+}

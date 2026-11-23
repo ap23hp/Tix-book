@@ -5,6 +5,7 @@ import { HttpError } from "../lib/errors.js";
 import { expireHolds } from "../lib/bookings.js";
 import { bookingEventSelect, bookingView } from "../lib/booking-view.js";
 import { startCheckout } from "../lib/payments.js";
+import { signTicket } from "../lib/tickets.js";
 
 export const bookingsRouter = Router();
 
@@ -69,6 +70,25 @@ bookingsRouter.post("/:id/checkout", async (req, res) => {
   const booking = await findOwnBooking(req.params.id, user.id);
   const { url } = await startCheckout(booking, user.email);
   res.status(200).json({ url });
+});
+
+// GET /api/v1/bookings/:id/ticket → { token }: the signed ticket (a JWT)
+// that the web app shows as a QR code. Only for my CONFIRMED booking.
+bookingsRouter.get("/:id/ticket", async (req, res) => {
+  const booking = await findOwnBooking(req.params.id, getUser(res).id);
+  if (booking.status !== "CONFIRMED" || !booking.event) {
+    throw new HttpError(409, "Only a confirmed booking has a ticket");
+  }
+  const token = await signTicket(
+    {
+      bookingId: booking.id,
+      reference: booking.reference,
+      eventId: booking.eventId,
+      seats: booking.seats,
+    },
+    booking.event.endsAt,
+  );
+  res.status(200).json({ token });
 });
 
 // There is no "confirm" route any more (it stood in for payment until

@@ -25,9 +25,16 @@ type Props = {
   // so the server's HTML and the browser can't disagree)
   labels: { date: string; time: string; total: string };
   payment?: PaymentReturn;
+  // The ticket's QR code (an SVG data URL made on the server), when confirmed
+  ticketQr?: string | null;
 };
 
-export function BookingDetails({ booking, labels, payment = null }: Props) {
+export function BookingDetails({
+  booking,
+  labels,
+  payment = null,
+  ticketQr = null,
+}: Props) {
   const router = useRouter();
   const toast = useToast();
   // What happened in this browser since the page loaded (the payment was
@@ -179,9 +186,21 @@ export function BookingDetails({ booking, labels, payment = null }: Props) {
         <div className="mt-6 border-t border-line pt-6">
           <p className="font-semibold text-ink">You&apos;re going!</p>
           <p className="mt-1 text-ink-soft">
-            Show the reference{" "}
+            Show this QR code or the reference{" "}
             <span className="font-mono">{booking.reference}</span> at the door.
           </p>
+          {ticketQr && (
+            // A data URL made on the server, so next/image has nothing to
+            // optimise. White background in dark mode too: scanners need it.
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={ticketQr}
+              alt={`Ticket QR code for booking ${booking.reference}`}
+              width={192}
+              height={192}
+              className="mt-4 rounded-md bg-white p-2"
+            />
+          )}
           {event.meetingLink && (
             <p className="mt-3">
               <a

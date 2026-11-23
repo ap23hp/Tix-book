@@ -8,7 +8,8 @@ import {
 import { Spinner } from "@/components/ui/Spinner";
 import { getCurrentUser } from "@/lib/auth";
 import { formatInZone, formatPrice, formatTimeRange } from "@/lib/format";
-import { getBooking } from "@/lib/server-api";
+import { getBooking, getTicketToken } from "@/lib/server-api";
+import { ticketQrDataUrl } from "@/lib/ticket-qr";
 import { display } from "@/lib/ui";
 
 export const metadata: Metadata = { title: "Your booking | Tixbook" };
@@ -65,5 +66,18 @@ async function BookingContent({
     total: formatPrice(booking.totalPence),
   };
 
-  return <BookingDetails booking={booking} labels={labels} payment={payment} />;
+  // A confirmed booking is the ticket (decision 004): its QR code is the
+  // signed token from the API (decision 023)
+  const token =
+    booking.status === "CONFIRMED" ? await getTicketToken(booking.id) : null;
+  const ticketQr = token ? await ticketQrDataUrl(token) : null;
+
+  return (
+    <BookingDetails
+      booking={booking}
+      labels={labels}
+      payment={payment}
+      ticketQr={ticketQr}
+    />
+  );
 }

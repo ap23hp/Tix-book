@@ -63,10 +63,16 @@ const labels = {
 function renderDetails(
   booking: Booking,
   payment: "success" | "cancelled" | null = null,
+  ticketQr: string | null = null,
 ) {
   return render(
     <ToastProvider>
-      <BookingDetails booking={booking} labels={labels} payment={payment} />
+      <BookingDetails
+        booking={booking}
+        labels={labels}
+        payment={payment}
+        ticketQr={ticketQr}
+      />
     </ToastProvider>,
   );
 }
@@ -220,6 +226,25 @@ describe("BookingDetails", () => {
     await act(async () => jest.advanceTimersByTime(POLL_MS * 10));
     expect(global.fetch).toHaveBeenCalledTimes(1);
     jest.useRealTimers();
+  });
+
+  it("shows the ticket QR code on a confirmed booking", () => {
+    renderDetails(
+      makeBooking({ status: "CONFIRMED", holdExpiresAt: null }),
+      null,
+      "data:image/svg+xml;utf8,%3Csvg%3E%3C%2Fsvg%3E",
+    );
+    expect(
+      screen.getByRole("img", {
+        name: "Ticket QR code for booking TIX-7KQ2M9XA",
+      }),
+    ).toHaveAttribute("src", "data:image/svg+xml;utf8,%3Csvg%3E%3C%2Fsvg%3E");
+  });
+
+  it("still shows the reference when there's no QR code", () => {
+    renderDetails(makeBooking({ status: "CONFIRMED", holdExpiresAt: null }));
+    expect(screen.queryByRole("img")).not.toBeInTheDocument();
+    expect(screen.getAllByText("TIX-7KQ2M9XA").length).toBeGreaterThan(0);
   });
 
   it("shows a refunded booking with the reason", () => {
