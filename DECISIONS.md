@@ -445,6 +445,8 @@ Trade-off: until phase 5, anyone can "pay" for a paid event by pressing Confirm.
 demo app with no real money, so that's acceptable, and it's stated in the UI.
 Revisit if: phase 5 (Stripe) is built; this endpoint then goes away or becomes
 organiser-only.
+**Done (phase 5b, 23 Nov):** the endpoint is removed; only the signed Stripe webhook confirms a
+booking (decisions 041, 042).
 
 ## 037 — Who can book, and how many seats
 Date: 2026-11-22
@@ -582,3 +584,41 @@ Why 3: Jest module mocks with ESM need `unstable_mockModule` and dynamic imports
 test file; real Stripe calls would make tests slow, flaky and need a secret in CI.
 Trade-off: the fake returns only the fields we use, so a change in Stripe's response shape
 wouldn't be caught by unit tests (the end-to-end check with Stripe's test mode covers that).
+
+## 044 — After paying: one booking page that waits for the webhook
+Date: 2026-11-23
+Options: (1) separate /payment/success and /payment/failed pages
+         (2) the booking page itself, with Stripe adding ?payment=success|cancelled
+Chose: 2. The booking page already shows every state (held, confirmed, expired), so
+"refunded", "cancelled" and "confirming" are just more states of the same thing.
+Never trust the redirect: ?payment=success only means "the browser came back". Until the
+API says the booking changed, the page shows "Payment received. Confirming your booking…"
+and asks GET /bookings/:id every 2 s, up to 20 times, then shows a calm "taking longer"
+message with a link to My tickets.
+Options for waiting: polling (chosen), Server-Sent Events, WebSockets.
+Why polling: it's one short wait per payment (Stripe usually delivers the webhook before
+the redirect, so most people never see it), it needs nothing on the server, and Render's
+free plan sleeps and drops long-lived connections. The next request is scheduled only
+after the last answer (no overlapping requests), and the effect cleanup cancels both the
+timer and the request when the page is left or hidden.
+"Failed payment" has no page of its own: a declined card stays on Stripe's page (the user
+can try another card), and a slow payment that fails just lets the hold run out.
+Trade-off: up to 20 small requests per payment in the worst case.
+Revisit if: something else needs live updates (e.g. a live seat counter in phase 7); then
+SSE could serve both.
+
+## 045 — Testing payments end to end without driving Stripe's page
+Date: 2026-11-23
+Options: (1) fill in Stripe's hosted checkout in Playwright
+         (2) click "Pay", check we really reach checkout.stripe.com, then send the local API
+             the same signed webhook Stripe sends (what `stripe listen` forwards)
+         (3) mock the API's Stripe calls in end-to-end tests too
+Chose: 2. The test reads STRIPE_WEBHOOK_SECRET from api/.env inside the test process and
+signs the event itself (HMAC-SHA256 of "timestamp.body"). The API's real signature check
+runs. Without a secret, the payment parts skip instead of failing.
+Why: Stripe's page is someone else's UI, inside iframes, and can change at any time; tests
+on it would be slow and flaky. Option 3 would stop testing the real checkout session.
+I paid once by hand with the 4242 test card through `stripe listen` (23 Nov), and the real
+webhook confirmed the booking, which covers what the test skips.
+Trade-off: the e2e webhook payload only has the fields we read; if Stripe changed the event
+shape, only the manual check would notice.

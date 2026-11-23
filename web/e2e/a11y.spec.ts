@@ -1,6 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
-import { createEvent, signUp } from "./helpers";
+import { createEvent, sendPaidWebhook, signUp, webhookSecret } from "./helpers";
 
 // Automated accessibility checks with axe (the engine behind axe DevTools)
 // against WCAG 2.2 A and AA. Automated tools find only part of the problems,
@@ -169,11 +169,29 @@ test.describe("booking pages (logged in as an attendee)", () => {
     await expectNoAxeViolations(page);
   });
 
-  test("held booking with the countdown, then confirmed", async ({ page }) => {
+  test("held, payment cancelled, confirming, then confirmed", async ({
+    page,
+    request,
+  }) => {
     await holdOneSeat(page);
     await expectNoAxeViolations(page);
+    const bookingId = page.url().split("/").pop()!;
 
-    await page.getByRole("button", { name: "Confirm booking" }).click();
+    // The pages Stripe sends people back to (opened directly: no need to
+    // create a Stripe session to check how they read)
+    await page.goto(`/bookings/${bookingId}?payment=cancelled`);
+    await expect(page.getByText(/Payment cancelled/)).toBeVisible();
+    await expectNoAxeViolations(page);
+
+    await page.goto(`/bookings/${bookingId}?payment=success`);
+    await expect(
+      page.getByText("Payment received. Confirming your booking…"),
+    ).toBeVisible();
+    await expectNoAxeViolations(page);
+
+    const secret = webhookSecret();
+    test.skip(!secret, "Stripe isn't set up (no STRIPE_WEBHOOK_SECRET)");
+    await sendPaidWebhook(request, bookingId, secret!);
     await expect(page.getByText("You're going!")).toBeVisible();
     await expectNoAxeViolations(page);
   });

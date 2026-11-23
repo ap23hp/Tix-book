@@ -1,14 +1,25 @@
 import { randomUUID } from "node:crypto";
 import { expect, test } from "@playwright/test";
-import { createEvent, holdSeats, signUp } from "./helpers";
+import {
+  createEvent,
+  holdSeats,
+  sendPaidWebhook,
+  signUp,
+  webhookSecret,
+} from "./helpers";
 
 // The whole booking flow in a real browser, against the real API and the
 // dev database. Each test makes its own organiser, event and attendee.
 
-test("book seats, confirm, and find the ticket on My tickets", async ({
+test("book seats, pay, and find the ticket on My tickets", async ({
   page,
   request,
 }) => {
+  const secret = webhookSecret();
+  test.skip(
+    !secret,
+    "Stripe isn't set up (no STRIPE_WEBHOOK_SECRET in api/.env)",
+  );
   const title = `E2E booking ${randomUUID().slice(0, 8)}`;
   // The organiser works through `request`; the attendee is this browser page
   await signUp(request, "ORGANISER");
@@ -32,8 +43,22 @@ test("book seats, confirm, and find the ticket on My tickets", async ({
   await expect(page.getByText("Held", { exact: true })).toBeVisible();
   await expect(page.getByRole("timer")).toHaveText(/^[45]:\d\d$/);
 
-  // Confirm (the stand-in for payment)
-  await page.getByRole("button", { name: "Confirm booking" }).click();
+  const bookingId = page.url().split("/").pop()!;
+
+  // Pay → the API creates a real Stripe test-mode session → Stripe's page
+  await page.getByRole("button", { name: "Pay £16 with Stripe" }).click();
+  await page.waitForURL(/^https:\/\/checkout\.stripe\.com\//);
+
+  // Back on the success URL before the webhook arrives: the page must say
+  // "confirming", not "confirmed" (the URL alone proves nothing)
+  await page.goto(`/bookings/${bookingId}?payment=success`);
+  await expect(
+    page.getByText("Payment received. Confirming your booking…"),
+  ).toBeVisible();
+  await expect(page.getByText("You're going!")).toBeHidden();
+
+  // Stripe's webhook arrives (signed) → the waiting page updates by itself
+  await sendPaidWebhook(request, bookingId, secret!);
   await expect(page.getByText("You're going!")).toBeVisible();
   await expect(page.getByText("Confirmed", { exact: true })).toBeVisible();
   await expect(

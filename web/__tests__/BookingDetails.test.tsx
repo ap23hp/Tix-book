@@ -1,11 +1,23 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { BookingDetails } from "@/components/BookingDetails";
 import { ToastProvider } from "@/components/ui/Toast";
 import type { Booking } from "@/lib/types";
+import { MAX_POLLS, POLL_MS } from "@/lib/use-payment-confirmation";
 
 const refresh = jest.fn();
 jest.mock("next/navigation", () => ({
   useRouter: () => ({ push: jest.fn(), refresh }),
+}));
+
+const goToExternal = jest.fn();
+jest.mock("@/lib/navigate", () => ({
+  goToExternal: (url: string) => goToExternal(url),
 }));
 
 function mockFetchOnce(status: number, body: unknown) {
@@ -48,10 +60,13 @@ const labels = {
   total: "£24",
 };
 
-function renderDetails(booking: Booking) {
+function renderDetails(
+  booking: Booking,
+  payment: "success" | "cancelled" | null = null,
+) {
   return render(
     <ToastProvider>
-      <BookingDetails booking={booking} labels={labels} />
+      <BookingDetails booking={booking} labels={labels} payment={payment} />
     </ToastProvider>,
   );
 }
@@ -62,46 +77,157 @@ beforeEach(() => {
 });
 
 describe("BookingDetails", () => {
-  it("shows a held booking with the countdown and a Confirm button", () => {
+  it("shows a held booking with the countdown and a Pay button", () => {
     renderDetails(makeBooking());
     expect(screen.getByText("Held")).toBeInTheDocument();
     expect(screen.getByRole("timer")).toHaveTextContent("5:00");
     expect(screen.getByText("TIX-7KQ2M9XA")).toBeInTheDocument();
     expect(screen.getByText("2 · £24")).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "Confirm booking" }),
+      screen.getByRole("button", { name: "Pay £24 with Stripe" }),
     ).toBeEnabled();
+    expect(
+      screen.queryByRole("button", { name: "Confirm booking" }),
+    ).not.toBeInTheDocument();
   });
 
-  it("confirms: shows You're going, a toast, and refreshes the page", async () => {
-    mockFetchOnce(200, makeBooking({ status: "CONFIRMED" }));
+  it("Pay asks the API for a checkout page and goes there", async () => {
+    mockFetchOnce(200, { url: "https://checkout.stripe.com/c/pay/cs_test_1" });
     renderDetails(makeBooking());
-    fireEvent.click(screen.getByRole("button", { name: "Confirm booking" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Pay £24 with Stripe" }),
+    );
 
-    expect(await screen.findByText("You're going!")).toBeInTheDocument();
+    expect(
+      await screen.findByRole("button", { name: "Opening Stripe…" }),
+    ).toBeDisabled();
     expect(global.fetch).toHaveBeenCalledWith(
-      "/api/v1/bookings/b1/confirm",
+      "/api/v1/bookings/b1/checkout",
       expect.objectContaining({ method: "POST" }),
     );
-    expect(screen.getByText("Booking confirmed")).toBeInTheDocument();
-    expect(refresh).toHaveBeenCalled();
+    await waitFor(() =>
+      expect(goToExternal).toHaveBeenCalledWith(
+        "https://checkout.stripe.com/c/pay/cs_test_1",
+      ),
+    );
   });
 
-  it("shows the expired message when confirming is too late (409)", async () => {
+  it("shows the server's message and refreshes when paying is too late (409)", async () => {
     mockFetchOnce(409, {
       error: "Your hold has expired and the seats were released",
     });
     renderDetails(makeBooking());
-    fireEvent.click(screen.getByRole("button", { name: "Confirm booking" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Pay £24 with Stripe" }),
+    );
 
+    // Found by text: the toast area is also an (empty) alert region
     expect(
       await screen.findByText(
-        "Your hold has expired and the seats were released.",
+        "Your hold has expired and the seats were released",
       ),
+    ).toHaveAttribute("role", "alert");
+    expect(refresh).toHaveBeenCalled();
+    expect(goToExternal).not.toHaveBeenCalled();
+  });
+
+  it("says the payment was cancelled and keeps the hold", () => {
+    renderDetails(makeBooking(), "cancelled");
+    expect(
+      screen.getByText(/Payment cancelled\. Your seats are still held/),
     ).toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: "Confirm booking" }),
+      screen.getByRole("button", { name: "Pay £24 with Stripe" }),
+    ).toBeEnabled();
+  });
+
+  it("back from Stripe: says confirming (not confirmed) until the API agrees", async () => {
+    jest.useFakeTimers();
+    // First check: the webhook hasn't arrived. Second: it has.
+    mockFetchOnce(200, makeBooking());
+    mockFetchOnce(200, makeBooking({ status: "CONFIRMED" }));
+    renderDetails(makeBooking(), "success");
+
+    expect(
+      screen.getByText("Payment received. Confirming your booking…"),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("You're going!")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /Pay/ }),
     ).not.toBeInTheDocument();
+
+    await act(async () => jest.advanceTimersByTime(POLL_MS));
+    expect(screen.queryByText("You're going!")).not.toBeInTheDocument();
+    await act(async () => jest.advanceTimersByTime(POLL_MS));
+
+    expect(screen.getByText("You're going!")).toBeInTheDocument();
+    expect(screen.getByText("Payment confirmed")).toBeInTheDocument();
+    expect(refresh).toHaveBeenCalled();
+    expect(global.fetch).toHaveBeenCalledTimes(2);
+    expect(global.fetch).toHaveBeenCalledWith(
+      "/api/v1/bookings/b1",
+      expect.objectContaining({ cache: "no-store" }),
+    );
+    jest.useRealTimers();
+  });
+
+  it("keeps waiting (not 'expired') when the hold ran out while paying", async () => {
+    jest.useFakeTimers();
+    mockFetchOnce(200, makeBooking({ status: "REFUNDED" }));
+    renderDetails(makeBooking({ status: "EXPIRED" }), "success");
+    expect(
+      screen.queryByText("Your hold has expired and the seats were released."),
+    ).not.toBeInTheDocument();
+
+    await act(async () => jest.advanceTimersByTime(POLL_MS));
+    expect(
+      screen.getByText("Your payment was refunded in full."),
+    ).toBeInTheDocument();
+    jest.useRealTimers();
+  });
+
+  it("says it's taking longer after the last check, and stops asking", async () => {
+    jest.useFakeTimers();
+    (global.fetch as jest.Mock).mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve(makeBooking()),
+    });
+    renderDetails(makeBooking(), "success");
+    for (let i = 0; i < MAX_POLLS; i++) {
+      await act(async () => jest.advanceTimersByTime(POLL_MS));
+    }
+    expect(
+      screen.getByText("This is taking longer than usual."),
+    ).toBeInTheDocument();
+    expect(global.fetch).toHaveBeenCalledTimes(MAX_POLLS);
+
+    await act(async () => jest.advanceTimersByTime(POLL_MS * 5));
+    expect(global.fetch).toHaveBeenCalledTimes(MAX_POLLS);
+    jest.useRealTimers();
+  });
+
+  it("stops asking when the page goes away", async () => {
+    jest.useFakeTimers();
+    (global.fetch as jest.Mock).mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve(makeBooking()),
+    });
+    const { unmount } = renderDetails(makeBooking(), "success");
+    await act(async () => jest.advanceTimersByTime(POLL_MS));
+    unmount();
+    await act(async () => jest.advanceTimersByTime(POLL_MS * 10));
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+    jest.useRealTimers();
+  });
+
+  it("shows a refunded booking with the reason", () => {
+    renderDetails(makeBooking({ status: "REFUNDED" }));
+    expect(screen.getByText("Refunded")).toBeInTheDocument();
+    expect(
+      screen.getByText("Your payment was refunded in full."),
+    ).toBeInTheDocument();
     expect(
       screen.getByRole("link", { name: "Back to the event" }),
     ).toHaveAttribute("href", "/events/e1");

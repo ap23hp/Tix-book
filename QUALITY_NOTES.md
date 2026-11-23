@@ -74,3 +74,10 @@ Testing approach, accessibility checks, known issues and things to review.
   Vercel serving a cached response, the rewrite changing the query string, or an older API
   deploy behind the rewrite. To investigate: compare the response headers of both requests
   (cache headers, which deploy answered) and repeat it with a cache-busting parameter.
+- **One-off `fetch failed` in an e2e run (23 Nov 2026), not reproduced.** In the first cold
+  run of phase 5b, the web server logged "Switched to client rendering because the server
+  rendering errored: fetch failed" twice (a Server Component couldn't reach the local
+  API). All 16 tests still passed. It did not happen in the next two cold runs (one on
+  `main`, one on the branch). That run started seconds after I stopped a local API whose
+  `tsx` child was still holding port 4000. To check if it happens again: which page, and
+  whether the API had answered /health yet.

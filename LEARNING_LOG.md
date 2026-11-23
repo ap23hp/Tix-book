@@ -955,3 +955,40 @@ applied (it failed on the first character); removing the 3 bytes fixed it.
   handler is idempotent because Stripe delivers at least once."
 - "A payment can arrive after the seat hold ends; I re-check seats under the same row lock
   and refund automatically if they're gone."
+
+## 2026-11-23 — Phase 5b: paying in the web app
+
+**Checked first:** the Stripe SDK (23.2.0) pins API version `2026-11-18.endive`, the same
+version as the webhook endpoint in the Stripe dashboard, so the event's `data.object` has
+the shape our code reads. Then a real payment, locally: hold 2 seats → Stripe's test page →
+card 4242 4242 4242 4242 → `stripe listen` forwarded `checkout.session.completed` → the
+booking became CONFIRMED with the payment id saved. Nothing else could have confirmed it,
+because the stand-in confirm wasn't called.
+
+**Never trust the redirect:** `?payment=success` only means the browser came back. The page
+says "confirming" and asks the API every 2 s until the webhook has changed the booking.
+Breaking this on purpose (show Confirmed from the URL) failed 4 tests.
+
+**Polling without leaks:** the next request starts only after the last answer, and the
+effect cleanup aborts the request and clears the timer. Removing the cleanup failed
+"stops asking when the page goes away". The callback is kept in a ref, so a new function
+from the parent doesn't restart the polling (the stale-closure problem, from the other
+side).
+
+**End-to-end without Stripe's UI (decision 045):** the test clicks Pay, checks it reached
+checkout.stripe.com, then signs a webhook itself the way Stripe does (HMAC-SHA256 of
+`timestamp.body`).
+
+**Small things:**
+- jsdom won't let a test spy on `window.location.assign`, so the redirect lives in a
+  one-line module (`lib/navigate.ts`) that tests replace.
+- `findByRole("alert")` found the toast area's empty alert region first; finding the
+  message by its text fixed the test.
+- `tsx watch` started by another program never starts the server (already noted in the
+  Playwright config); stopping `npm` also left the `tsx` child holding port 4000.
+
+**Interview lines:**
+- "The success page is not proof of payment. My page waits for the server, which only
+  trusts Stripe's signed webhook."
+- "I poll with a cleanup that aborts the request and clears the timer, so leaving the page
+  can't leave requests running."

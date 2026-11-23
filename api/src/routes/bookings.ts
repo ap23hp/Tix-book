@@ -2,7 +2,7 @@ import { Router } from "express";
 import { prisma } from "../lib/prisma.js";
 import { getUser, requireAuth } from "../middleware/auth.js";
 import { HttpError } from "../lib/errors.js";
-import { confirmHold, expireHolds } from "../lib/bookings.js";
+import { expireHolds } from "../lib/bookings.js";
 import { bookingEventSelect, bookingView } from "../lib/booking-view.js";
 import { startCheckout } from "../lib/payments.js";
 
@@ -71,12 +71,5 @@ bookingsRouter.post("/:id/checkout", async (req, res) => {
   res.status(200).json({ url });
 });
 
-// POST /api/v1/bookings/:id/confirm → turn my hold into a confirmed booking.
-// Stands in for "payment succeeded" until Stripe in phase 5 (decision 036).
-// Removed in phase 5b, when the web app switches to Stripe Checkout.
-// 409 if the hold has expired (the seats may already be someone else's).
-bookingsRouter.post("/:id/confirm", async (req, res) => {
-  const booking = await findOwnBooking(req.params.id, getUser(res).id);
-  const { booking: confirmed, now } = await confirmHold(booking);
-  res.status(200).json(bookingView(confirmed, booking.event, now));
-});
+// There is no "confirm" route any more (it stood in for payment until
+// phase 5, decision 036): only the signed Stripe webhook confirms a booking.
