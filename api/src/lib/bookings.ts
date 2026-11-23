@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import type { Booking, Prisma } from "../generated/prisma/client.js";
 import { HttpError } from "./errors.js";
+import { enqueueBookingConfirmedEmail } from "./jobs.js";
 import { prisma } from "./prisma.js";
 import { seatsTakenByEvent } from "./seats.js";
 
@@ -137,7 +138,7 @@ export async function holdSeats(
 
       // Free events skip the hold (decision 008): nothing to pay
       const isFree = event.pricePence === 0;
-      return tx.booking.create({
+      const created = await tx.booking.create({
         data: {
           eventId: event.id,
           userId: input.userId,
@@ -151,6 +152,10 @@ export async function holdSeats(
             : new Date(now.getTime() + HOLD_MINUTES * 60_000),
         },
       });
+      // A free booking is confirmed now, so its email job is saved in the
+      // same transaction (paid ones get theirs from the Stripe webhook)
+      if (isFree) await enqueueBookingConfirmedEmail(tx, created.id);
+      return created;
     }, TRANSACTION_OPTIONS);
 
     return { booking, created: true };

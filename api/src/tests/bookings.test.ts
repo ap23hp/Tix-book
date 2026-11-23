@@ -4,6 +4,8 @@ import request from "supertest";
 import app from "../app.js";
 import { prisma } from "../lib/prisma.js";
 import { createSession, SESSION_COOKIE } from "../lib/session.js";
+import { stopJobs } from "../lib/jobs.js";
+import { deleteEmailJobsFor, emailJobsFor } from "./job-helpers.js";
 
 const runId = Date.now();
 const PREFIX = "bookings-test-";
@@ -65,6 +67,11 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  // Email jobs first: they point at the bookings by id
+  await deleteEmailJobsFor({
+    event: { organiser: { email: { startsWith: PREFIX } } },
+  });
+  await stopJobs();
   // Bookings first, then events, then users (each points at the next)
   await prisma.booking.deleteMany({
     where: { event: { organiser: { email: { startsWith: PREFIX } } } },
@@ -126,6 +133,8 @@ describe("POST /api/v1/events/:id/bookings (hold seats)", () => {
     // The held seats are taken
     const page = await request(app).get(`/api/v1/events/${event.id}`);
     expect(page.body.seatsLeft).toBe(8);
+    // Only held, not paid: no email yet (the Stripe webhook queues it)
+    expect(await emailJobsFor(response.body.id)).toHaveLength(0);
   });
 
   it("confirms a free event straight away (no hold)", async () => {
@@ -138,6 +147,8 @@ describe("POST /api/v1/events/:id/bookings (hold seats)", () => {
     expect(response.body.status).toBe("CONFIRMED");
     expect(response.body.holdExpiresAt).toBeNull();
     expect(response.body.event.meetingLink).toBe("https://example.com/meet");
+    // Confirmed now, so its email is queued now
+    expect(await emailJobsFor(response.body.id)).toHaveLength(1);
   });
 
   it("refuses more seats than are left, then sold out", async () => {

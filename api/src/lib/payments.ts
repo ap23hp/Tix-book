@@ -1,6 +1,7 @@
 import type Stripe from "stripe";
 import type { Booking } from "../generated/prisma/client.js";
 import { HttpError } from "./errors.js";
+import { enqueueBookingConfirmedEmail } from "./jobs.js";
 import { lockEvent } from "./bookings.js";
 import { prisma } from "./prisma.js";
 import { seatsTakenByEvent } from "./seats.js";
@@ -150,6 +151,11 @@ async function fulfilCheckout(session: Stripe.Checkout.Session) {
         stripeSessionId: session.id,
       },
     });
+    if (seatsFree) {
+      // Saved in this same transaction: the booking can't be confirmed
+      // without its email job, and a rollback removes both (decision 050)
+      await enqueueBookingConfirmedEmail(tx, booking.id);
+    }
     return seatsFree ? "confirmed" : "refund";
   }, TRANSACTION_OPTIONS);
 

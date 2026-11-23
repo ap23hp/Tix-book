@@ -14,6 +14,8 @@ import { prisma } from "../lib/prisma.js";
 import { createSession, SESSION_COOKIE } from "../lib/session.js";
 import { newReference } from "../lib/bookings.js";
 import { stripeGateway } from "../lib/stripe.js";
+import { stopJobs } from "../lib/jobs.js";
+import { deleteEmailJobsFor, emailJobsFor } from "./job-helpers.js";
 
 const runId = Date.now();
 const PREFIX = "payments-test-";
@@ -159,6 +161,11 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  // Email jobs first: they point at the bookings by id
+  await deleteEmailJobsFor({
+    event: { organiser: { email: { startsWith: PREFIX } } },
+  });
+  await stopJobs();
   Object.assign(stripeGateway, original);
   await prisma.stripeEvent.deleteMany({
     where: { id: { startsWith: "evt_test_" } },
@@ -282,6 +289,8 @@ describe("POST /api/v1/payments/webhook", () => {
     expect(saved.status).toBe("CONFIRMED");
     expect(saved.stripePaymentIntentId).toBe("pi_test_ok" + runId);
     expect(refunds).toHaveLength(0);
+    // Its confirmation email is queued, in the same transaction
+    expect(await emailJobsFor(booking.id)).toHaveLength(1);
   });
 
   it("does nothing twice when the same event arrives again", async () => {
@@ -295,6 +304,7 @@ describe("POST /api/v1/payments/webhook", () => {
     expect(again.body.duplicate).toBe(true);
     expect(await status(booking.id)).toBe("CONFIRMED");
     expect(refunds).toHaveLength(0);
+    expect(await emailJobsFor(booking.id)).toHaveLength(1);
   });
 
   it("handles two copies arriving at the same moment once", async () => {
@@ -309,6 +319,9 @@ describe("POST /api/v1/payments/webhook", () => {
     expect(responses.map((r) => r.status)).toEqual([200, 200]);
     expect(await status(booking.id)).toBe("CONFIRMED");
     expect(refunds).toHaveLength(0);
+    // Two copies at once still queue ONE email: only the copy that
+    // confirmed the booking (under the lock) saved a job
+    expect(await emailJobsFor(booking.id)).toHaveLength(1);
   });
 
   it("treats a new event about the same payment as already done", async () => {
@@ -326,6 +339,7 @@ describe("POST /api/v1/payments/webhook", () => {
     );
     expect(await status(booking.id)).toBe("CONFIRMED");
     expect(refunds).toHaveLength(0);
+    expect(await emailJobsFor(booking.id)).toHaveLength(1);
   });
 
   it("confirms a late payment when the seats are still free", async () => {
@@ -354,6 +368,8 @@ describe("POST /api/v1/payments/webhook", () => {
 
     expect(await status(late.id)).toBe("REFUNDED");
     expect(refunds).toEqual([paymentIntent]);
+    // Refunded, not confirmed: no "confirmed" email
+    expect(await emailJobsFor(late.id)).toHaveLength(0);
   });
 
   it("retries a refund that failed, when Stripe sends the event again", async () => {
