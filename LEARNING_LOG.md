@@ -1028,3 +1028,34 @@ browser (`HTMLDialogElement`) and now skips that part when there's no DOM.
   confirmed."
 - "A verifier must pin the algorithm, issuer and audience, or a token made for something
   else could be accepted."
+
+## 2026-11-23 — Phase 5d: the organiser dashboard
+
+**One rule, one query:** the dashboard's confirmed / held / left numbers come from the same
+"taken" rule as seats left, grouped by event, status and price in one query for the whole
+list. No N+1, and the dashboard can't disagree with the public page.
+
+**A test that passed for the wrong reason (again):** I broke the count on purpose (count
+every HELD row) and all tests still passed, because the dashboard route saves EXPIRED first.
+The My events list doesn't, so the bug was real there. A new test with a run-out hold that
+is still stored as HELD fails on the broken code. Breaking code on purpose is how I found
+the gap.
+
+**Privacy:** attendees are shown by name only. A test checks that no email, key or payment
+id is in the response, and adding the email on purpose failed it.
+
+**Accessible table:** a real `<table>` with a caption and column headers, status as text in
+the badge (a test removes the text and fails). On a phone the table scrolls inside its own
+box, which can take keyboard focus; the e2e test checks at 375 px that the page itself
+never scrolls sideways. The jsx-a11y rule against `tabIndex` on non-interactive elements is
+turned off for that one line, with the reason (axe's "scrollable-region-focusable" asks for
+it).
+
+**Next.js route types:** `PageProps<"/my-events/[id]">` failed type-checking until the route
+types were generated again (`npx next typegen`); `next dev` and `next build` do this
+automatically.
+
+**Interview lines:**
+- "Every seat number in the app comes from one function, so the organiser's dashboard and
+  the public page can't disagree."
+- "Organisers see attendee names, not emails: they don't need them to run the event."

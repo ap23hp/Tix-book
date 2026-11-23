@@ -3,7 +3,7 @@ import { Badge, type Tone } from "@/components/ui/Badge";
 import { buttonClass } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { formatInZone } from "@/lib/format";
-import type { EventStatus, MyEvent } from "@/lib/types";
+import type { EventStatus, MyEventListItem } from "@/lib/types";
 import { display } from "@/lib/ui";
 
 const STATUS: Record<EventStatus, { label: string; tone: Tone }> = {
@@ -13,7 +13,7 @@ const STATUS: Record<EventStatus, { label: string; tone: Tone }> = {
 };
 
 type Props = {
-  events: MyEvent[];
+  events: MyEventListItem[];
   // true when the organiser has more events than one page shows
   hasMore: boolean;
   limit: number;
@@ -63,9 +63,28 @@ export function MyEventsList({ events, hasMore, limit }: Props) {
                       timeZoneName: "short",
                     })}
                   </p>
+                  {/* Drafts can't be booked yet, so no numbers for them */}
+                  {event.status !== "DRAFT" && (
+                    <p className="mt-1 text-sm text-ink-soft">
+                      {event.seatsConfirmed} confirmed · {event.seatsHeld} held
+                      · {event.seatsLeft} of {event.seatLimit} left
+                    </p>
+                  )}
                 </div>
 
                 <div className="flex gap-2">
+                  {event.status !== "DRAFT" && (
+                    <Link
+                      href={`/my-events/${event.id}`}
+                      className={buttonClass({
+                        variant: "secondary",
+                        size: "sm",
+                      })}
+                    >
+                      Bookings
+                      <span className="sr-only"> for {event.title}</span>
+                    </Link>
+                  )}
                   {/* Each link says which event it's for: a screen reader's
                       list of links would otherwise be "Edit, Edit, Edit" */}
                   <Link

@@ -56,3 +56,57 @@ export async function withSeatsLeft<
     seatsLeft: event.seatLimit - (taken.get(event.id) ?? 0),
   }));
 }
+
+export type SeatSummary = {
+  seatsConfirmed: number;
+  // Seats on a hold that is still running (they come back if not paid)
+  seatsHeld: number;
+  seatsLeft: number;
+  // Money from confirmed bookings, at the price each booking was made at
+  // (decision 009). Refunded bookings aren't CONFIRMED, so they don't count.
+  revenuePence: number;
+};
+
+// The organiser's view of seats, for many events in ONE query (no N+1).
+// It uses takenWhere, the same rule as seats left, so confirmed + held +
+// left always equals the seat limit, and the dashboard can never disagree
+// with the public event page.
+export async function seatSummaries(
+  events: { id: string; seatLimit: number }[],
+  { now = new Date(), db = prisma }: { now?: Date; db?: Db } = {},
+): Promise<Map<string, SeatSummary>> {
+  const summaries = new Map<string, SeatSummary>(
+    events.map((event) => [
+      event.id,
+      {
+        seatsConfirmed: 0,
+        seatsHeld: 0,
+        seatsLeft: event.seatLimit,
+        revenuePence: 0,
+      },
+    ]),
+  );
+  if (events.length === 0) return summaries;
+
+  // Grouped by price too, because revenue = seats × the price saved on each
+  // booking, and a price can change between bookings
+  const rows = await db.booking.groupBy({
+    by: ["eventId", "status", "unitPricePence"],
+    where: { eventId: { in: events.map((e) => e.id) }, ...takenWhere(now) },
+    _sum: { seats: true },
+  });
+
+  for (const row of rows) {
+    const summary = summaries.get(row.eventId);
+    if (!summary) continue;
+    const seats = row._sum.seats ?? 0;
+    if (row.status === "CONFIRMED") {
+      summary.seatsConfirmed += seats;
+      summary.revenuePence += seats * row.unitPricePence;
+    } else {
+      summary.seatsHeld += seats;
+    }
+    summary.seatsLeft -= seats;
+  }
+  return summaries;
+}
