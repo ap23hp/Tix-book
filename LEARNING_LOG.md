@@ -1089,3 +1089,18 @@ first test expected no comma; the test was wrong, not the code.
   providers changes one file."
 - "I only retry errors that can succeed on a retry, and the idempotency key makes the retry
   safe."
+
+**A test that passed for the wrong reason (time zones):** my laptop is in Europe/London, so
+a date formatted with the server's zone by mistake still looked right. I broke it on purpose
+and the test passed. Setting `process.env.TZ` inside a test file doesn't help: Jest runs each
+file in a sandbox with its own copy of `process.env`. Fix: `jest.global-setup.js` sets
+`TZ=UTC` once, in the main process, before any test runs, so every API test runs like
+Render. Now the broken version fails 2 tests.
+
+**First real email (23 Nov):** `npm run email:test` sent one email through Resend. It arrived
+in the inbox, not spam, and `<check escaping>` showed as text. The link was rewritten
+through resend-clicks.com (click tracking), which we can't turn off without our own
+domain (decision 049).
+
+**Interview line:** "My tests run in UTC like the server, so a time zone bug can't hide
+behind my laptop's settings."

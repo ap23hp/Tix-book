@@ -707,6 +707,19 @@ key, never by address.
 Trade-off: real attendees get no email until there's a domain. The whole flow still runs and
 is tested; only the last step is skipped.
 Revisit if: real users arrive (phase 9): buy a domain, verify it, set the allowlist to `*`.
+**Known limitation: click tracking (checked 23 Nov).** In the first real test email, the My
+tickets link was rewritten to go through resend-clicks.com. We can't turn this off yet.
+Resend's docs say tracking is a setting of each domain ("Open and click tracking is
+disabled by default for all domains"), set in the dashboard or with `click_tracking` on the
+Update Domain API, and that it needs a verified tracking subdomain. `POST /emails` has no
+per-email option. The docs say nothing about the shared `resend.dev` sender, and we don't
+own that domain, so there is nothing for us to configure. Only the HTML version's links are
+rewritten ("Resend modifies each link in the body of the HTML email"). Resend also advises
+"disabling open rates for transactional email".
+Fix when we have a domain: verify it, and leave open and click tracking off (the default).
+Sources: https://resend.com/docs/dashboard/domains/tracking ,
+https://resend.com/docs/api-reference/domains/update-domain ,
+https://resend.com/docs/api-reference/emails/send-email
 
 ## 050 — Background jobs: pg-boss (a queue in Postgres), not Redis
 Date: 2026-11-23 (facts checked against the docs the same day)
