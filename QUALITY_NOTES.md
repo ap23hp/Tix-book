@@ -67,6 +67,12 @@ Testing approach, accessibility checks, known issues and things to review.
   works, modal traps focus, closes on Escape and returns focus. Nothing to fix.
 - Not in CI yet (phase 8). Automated axe checks find only part of the problems.
 
+## Payments testing (phase 5, 23 Nov 2026)
+- API tests never call Stripe: every network call goes through `stripeGateway` (`api/src/lib/stripe.ts`), which the tests replace. Webhooks are signed with a test secret using Stripe's own `generateTestHeaderString`, so the real signature check runs.
+- End-to-end: "Pay" really creates a test-mode session and reaches checkout.stripe.com; then the test sends the local API a correctly signed webhook (what `stripe listen` forwards). Skips without a webhook secret.
+- Manual check (23 Nov): a real local payment with the 4242 test card through `stripe listen` confirmed the booking.
+- Production payments haven't been tested by me (no data may be created in production); to check by hand: book a paid event on the live site and pay with the 4242 card.
+
 ## Open questions
 - **Vercel and `?limit=100` (20 Nov 2026), not explained yet.** `GET /api/v1/events?limit=100`
   through the Vercel rewrite (tix-book.vercel.app) returned events, but the same request to

@@ -176,15 +176,15 @@ Explain test: optimistic vs pessimistic locking, idempotency, deadlocks
 **Goal:** pay with Stripe test cards; a booking is confirmed only after payment.
 
 Tasks
-- [ ] Stripe Checkout in test mode
-- [ ] Webhook endpoint that confirms the booking; verify the webhook signature
-- [ ] Handle duplicate webhook deliveries (idempotency again)
-- [ ] Handle payment failure and abandoned checkout (hold expires)
-- [ ] Timeouts on calls to Stripe
-- [ ] Payment success and payment failed pages
-- [ ] Ticket page: event details, booking reference, optional QR code
-- [ ] Organiser dashboard: bookings per event, seats left, held vs confirmed
-- [ ] Tests: webhook confirms booking; duplicate webhook does nothing twice
+- [x] Stripe Checkout in test mode
+- [x] Webhook endpoint that confirms the booking; verify the webhook signature
+- [x] Handle duplicate webhook deliveries (idempotency again)
+- [x] Handle payment failure and abandoned checkout (hold expires); late payments are refunded (decision 041)
+- [x] Timeouts on calls to Stripe
+- [x] Payment success and payment failed pages (states of the booking page, decision 044)
+- [x] Ticket page: event details, booking reference, QR code (signed JWT, decision 046)
+- [x] Organiser dashboard: bookings per event, seats left, held vs confirmed
+- [x] Tests: webhook confirms booking; duplicate webhook does nothing twice
 
 Concepts: Stripe Checkout, webhooks, retries, payment failure handling, timeouts
 Accessibility: clear payment status messages, not colour-only
