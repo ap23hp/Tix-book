@@ -681,3 +681,50 @@ even holds that ran out) passed all tests at first, because the dashboard saves 
 before counting. The My events list doesn't, so it would have shown run-out holds as held.
 A new test with a hold still stored as HELD caught it.
 Trade-off: the event page now runs two queries (summary and list); fine at this size.
+
+## 049 — Email: Resend's HTTP API, in sandbox mode (no domain)
+Date: 2026-11-23
+Options: Resend, Mailgun, Postmark, SendGrid, Brevo (free plans checked in their docs on 23 Nov)
+Chose: Resend, called with `fetch` over its HTTP API (no SDK, no SMTP).
+Why:
+- Biggest free plan of the ones I could check: 3,000 emails/month, 100/day, free forever.
+  Mailgun is 100/day, Postmark 100/month, SendGrid is now a 60-day trial only.
+- HTTP, not SMTP: Render's free plan blocks outgoing SMTP ports.
+- `fetch` instead of the SDK: one request, and I control the timeout (10 s), the
+  `Idempotency-Key` header (Resend remembers it for 24 hours, so a retry can't send twice)
+  and how errors are sorted (retryable: timeout, network, 429 rate limit, 5xx; permanent:
+  400/401/403/422, quota used up).
+**Sandbox, because there's no domain:** Resend only sends to other people from a domain
+you own (with SPF/DKIM records), and `vercel.app` isn't ours. Without one, it delivers only
+to the Resend account's own address. I'm not spending money, so: `EMAIL_FROM` is
+`onboarding@resend.dev`, and `EMAIL_SANDBOX_ALLOWLIST` lists who may get email (my address).
+Anyone else is logged as `skipped: sandbox` and counts as done. Unset means nobody (so a
+missing setting can't email real attendees); `*` means everyone, for when a domain exists.
+**Rules:** email never fails or slows a booking (sent from a background job in 6b; no key
+→ `skipped: disabled`). Emails link to My tickets: no QR code, no ticket JWT, no meeting
+link, no secrets. Organiser text is HTML-escaped. Logs name an email by its idempotency
+key, never by address.
+Trade-off: real attendees get no email until there's a domain. The whole flow still runs and
+is tested; only the last step is skipped.
+Revisit if: real users arrive (phase 9): buy a domain, verify it, set the allowlist to `*`.
+
+## 050 — Background jobs: pg-boss (a queue in Postgres), not Redis
+Date: 2026-11-23
+Options: (1) pg-boss, in the Postgres we already have
+         (2) BullMQ + Redis (Upstash free: 500K commands/month)
+Chose: 1.
+Why:
+- The job can be saved in the same transaction as the booking (pg-boss's `db` option on
+  `send`): a confirmed booking always has its email job, a rolled-back one never does. With
+  Redis, the booking could commit and the job be lost (or the other way round).
+- It has what phase 6 needs: retries with exponential backoff, a dead letter queue, delayed
+  jobs (`startAfter`) for reminders, cron, and singleton keys against duplicates.
+- No new service, account or secret. Upstash's own BullMQ page says BullMQ uses Redis
+  "even when there is no queue activity", which eats a command-based free plan.
+- Both DATABASE_URLs are direct connections (not Neon's PgBouncer pooler), which pg-boss's
+  session features need.
+Trade-off: a Postgres queue handles less throughput than Redis (far more than we need), and
+it polls the database (every 2 s by default), which keeps Neon awake while the API is awake.
+Render's sleep and Neon's 100 CU-hours/month must be planned around (phase 6c).
+Revisit if: job volume grows large, or Redis arrives anyway (phase 7) and the queue's
+database load matters.
