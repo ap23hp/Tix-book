@@ -661,3 +661,23 @@ and a white background even in dark mode, because scanners need the contrast.
 If the ticket can't be made (e.g. the secret is missing), the page still shows the booking
 and its reference, which works at the door too.
 Trade-off: the SVG is part of the page HTML (a few KB).
+
+## 048 — Organiser dashboard: what organisers see, and how it's counted
+Date: 2026-11-23
+**What's shown:** per event: seats confirmed, seats on a running hold, seats left, revenue
+(confirmed only, at each booking's saved price, decision 009), and every booking (reference,
+attendee name, seats, total, status, time), newest first, up to 200.
+**Attendees by name only.** Options: (1) name and email (2) name only (chosen)
+Why: the organiser needs a name to welcome people and the reference/QR to check them in;
+an email is personal data they don't need to run the event (data minimisation, UK GDPR).
+Trade-off: an organiser can't contact attendees yet (e.g. "the venue changed"). If that's
+needed, it should be a message sent BY the app (phase 6 emails), not a list of addresses.
+**One counting rule.** The numbers come from the same `takenWhere` rule as "seats left", in
+one grouped query for a whole list of events (no N+1). So confirmed + held + left always
+equals the seat limit, and the dashboard can't disagree with the public page (a test
+compares them).
+**A test that passed for the wrong reason:** breaking the count (counting every HELD row,
+even holds that ran out) passed all tests at first, because the dashboard saves EXPIRED
+before counting. The My events list doesn't, so it would have shown run-out holds as held.
+A new test with a hold still stored as HELD caught it.
+Trade-off: the event page now runs two queries (summary and list); fine at this size.
