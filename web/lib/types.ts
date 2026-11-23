@@ -48,7 +48,50 @@ export type MyEvent = {
   pricePence: number;
   seatLimit: number;
 };
-export type MyEventPage = { events: MyEvent[]; nextCursor: string | null };
+// In the "My events" list, each event also has its seat numbers
+// (confirmed + held + left = seatLimit, using the same rule as seats left)
+export type MyEventListItem = MyEvent & {
+  seatsConfirmed: number;
+  // Seats on a hold that is still running
+  seatsHeld: number;
+  seatsLeft: number;
+};
+
+export type MyEventPage = {
+  events: MyEventListItem[];
+  nextCursor: string | null;
+};
+
+// GET /api/v1/events/mine/:id/bookings: one event's dashboard
+export type EventDashboard = {
+  event: Pick<
+    MyEvent,
+    | "id"
+    | "title"
+    | "status"
+    | "startsAt"
+    | "timezone"
+    | "seatLimit"
+    | "pricePence"
+  >;
+  summary: {
+    seatsConfirmed: number;
+    seatsHeld: number;
+    seatsLeft: number;
+    revenuePence: number;
+  };
+  bookings: {
+    id: string;
+    reference: string;
+    status: BookingStatus;
+    seats: number;
+    totalPence: number;
+    createdAt: string;
+    attendeeName: string;
+  }[];
+  // true when there are more bookings than the API returns at once (200)
+  hasMore: boolean;
+};
 
 export type BookingStatus =
   "HELD" | "CONFIRMED" | "EXPIRED" | "CANCELLED" | "REFUNDED";

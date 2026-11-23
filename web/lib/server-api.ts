@@ -2,7 +2,12 @@ import "server-only";
 import { cookies } from "next/headers";
 import { ApiError } from "@/lib/api";
 import { SESSION_COOKIE } from "@/lib/auth";
-import type { Booking, MyEvent, MyEventPage } from "@/lib/types";
+import type {
+  Booking,
+  EventDashboard,
+  MyEvent,
+  MyEventPage,
+} from "@/lib/types";
 
 // The most "My events" shows at once (the API's maximum page size)
 export const MY_EVENTS_LIMIT = 50;
@@ -79,5 +84,20 @@ export async function getTicketToken(id: string): Promise<string | null> {
   } catch (error) {
     console.error("Couldn't load the ticket", error);
     return null;
+  }
+}
+
+// One of my events with its bookings, for the organiser dashboard.
+// null when the event doesn't exist OR isn't mine (404 for both).
+export async function getEventDashboard(
+  id: string,
+): Promise<EventDashboard | null> {
+  try {
+    return await fetchAsUser<EventDashboard>(
+      `/api/v1/events/mine/${encodeURIComponent(id)}/bookings`,
+    );
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) return null;
+    throw error;
   }
 }

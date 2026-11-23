@@ -1,8 +1,8 @@
 import { render, screen } from "@testing-library/react";
 import { MyEventsList } from "@/components/MyEventsList";
-import type { MyEvent } from "@/lib/types";
+import type { MyEventListItem } from "@/lib/types";
 
-function makeEvent(overrides: Partial<MyEvent>): MyEvent {
+function makeEvent(overrides: Partial<MyEventListItem>): MyEventListItem {
   return {
     id: "e1",
     title: "Jazz night",
@@ -19,6 +19,9 @@ function makeEvent(overrides: Partial<MyEvent>): MyEvent {
     meetingLink: null,
     pricePence: 1200,
     seatLimit: 50,
+    seatsConfirmed: 12,
+    seatsHeld: 3,
+    seatsLeft: 35,
     ...overrides,
   };
 }
@@ -95,5 +98,31 @@ describe("MyEventsList", () => {
     expect(
       screen.getByText("Showing your 50 latest events."),
     ).toBeInTheDocument();
+  });
+
+  it("shows seat numbers and a Bookings link for a published event", () => {
+    render(
+      <MyEventsList events={[makeEvent({})]} hasMore={false} limit={50} />,
+    );
+    expect(
+      screen.getByText("12 confirmed · 3 held · 35 of 50 left"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: "Bookings for Jazz night" }),
+    ).toHaveAttribute("href", "/my-events/e1");
+  });
+
+  it("shows no numbers or Bookings link for a draft", () => {
+    render(
+      <MyEventsList
+        events={[makeEvent({ status: "DRAFT" })]}
+        hasMore={false}
+        limit={50}
+      />,
+    );
+    expect(screen.queryByText(/confirmed ·/)).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: /^Bookings/ }),
+    ).not.toBeInTheDocument();
   });
 });
