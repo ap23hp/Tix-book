@@ -681,3 +681,86 @@ even holds that ran out) passed all tests at first, because the dashboard saves 
 before counting. The My events list doesn't, so it would have shown run-out holds as held.
 A new test with a hold still stored as HELD caught it.
 Trade-off: the event page now runs two queries (summary and list); fine at this size.
+
+## 049 — Email: Resend's HTTP API, in sandbox mode (no domain)
+Date: 2026-11-23
+Options: Resend, Mailgun, Postmark, SendGrid, Brevo (free plans checked in their docs on 23 Nov)
+Chose: Resend, called with `fetch` over its HTTP API (no SDK, no SMTP).
+Why:
+- Biggest free plan of the ones I could check: 3,000 emails/month, 100/day, free forever.
+  Mailgun is 100/day, Postmark 100/month, SendGrid is now a 60-day trial only.
+- HTTP, not SMTP: Render's free plan blocks outgoing SMTP ports.
+- `fetch` instead of the SDK: one request, and I control the timeout (10 s), the
+  `Idempotency-Key` header (Resend remembers it for 24 hours, so a retry can't send twice)
+  and how errors are sorted (retryable: timeout, network, 429 rate limit, 5xx; permanent:
+  400/401/403/422, quota used up).
+**Sandbox, because there's no domain:** Resend only sends to other people from a domain
+you own (with SPF/DKIM records), and `vercel.app` isn't ours. Without one, it delivers only
+to the Resend account's own address. I'm not spending money, so: `EMAIL_FROM` is
+`onboarding@resend.dev`, and `EMAIL_SANDBOX_ALLOWLIST` lists who may get email (my address).
+Anyone else is logged as `skipped: sandbox` and counts as done. Unset means nobody (so a
+missing setting can't email real attendees); `*` means everyone, for when a domain exists.
+**Rules:** email never fails or slows a booking (sent from a background job in 6b; no key
+→ `skipped: disabled`). Emails link to My tickets: no QR code, no ticket JWT, no meeting
+link, no secrets. Organiser text is HTML-escaped. Logs name an email by its idempotency
+key, never by address.
+Trade-off: real attendees get no email until there's a domain. The whole flow still runs and
+is tested; only the last step is skipped.
+Revisit if: real users arrive (phase 9): buy a domain, verify it, set the allowlist to `*`.
+**Known limitation: click tracking (checked 23 Nov).** In the first real test email, the My
+tickets link was rewritten to go through resend-clicks.com. We can't turn this off yet.
+Resend's docs say tracking is a setting of each domain ("Open and click tracking is
+disabled by default for all domains"), set in the dashboard or with `click_tracking` on the
+Update Domain API, and that it needs a verified tracking subdomain. `POST /emails` has no
+per-email option. The docs say nothing about the shared `resend.dev` sender, and we don't
+own that domain, so there is nothing for us to configure. Only the HTML version's links are
+rewritten ("Resend modifies each link in the body of the HTML email"). Resend also advises
+"disabling open rates for transactional email".
+Fix when we have a domain: verify it, and leave open and click tracking off (the default).
+Sources: https://resend.com/docs/dashboard/domains/tracking ,
+https://resend.com/docs/api-reference/domains/update-domain ,
+https://resend.com/docs/api-reference/emails/send-email
+
+## 050 — Background jobs: pg-boss (a queue in Postgres), not Redis
+Date: 2026-11-23 (facts checked against the docs the same day)
+Options: (1) pg-boss, in the Postgres we already have
+         (2) BullMQ + Redis (Upstash free plan)
+Chose: 1.
+Why:
+- The job can be saved in the same transaction as the booking: `send()` takes a `db`
+  option ("you can use your own" adapter: `executeSql(text, values)`) [jobs]. So a
+  confirmed booking always has its email job, and a rolled-back one never does.
+- It has what phase 6 needs: `retryLimit`, `retryDelay` and `retryBackoff` ("exponential
+  backoff retries based on retryDelay") [jobs]; a dead letter queue, set as the `deadLetter`
+  option on `createQueue()` [queues]; delayed jobs with `startAfter` [jobs]; cron with
+  `schedule()` [scheduling]; and `singletonKey`, one job per key [jobs].
+- No new service, account or secret: its tables go in a schema named `pgboss` by
+  default [constructor]. Needs Node 22.12+ and PostgreSQL 13+ [readme].
+- Redis on Upstash's free plan has 500K commands per month [upstash-pricing], and
+  Upstash's BullMQ page says "BullMQ accesses Redis regularly, even when there is no queue
+  activity" [upstash-bullmq].
+**Connections:** both of our DATABASE_URLs are direct connections, not Neon's pooler.
+Neon's pooler is PgBouncer in transaction mode and doesn't support LISTEN/NOTIFY or
+session-level advisory locks [neon-pooling]. pg-boss uses LISTEN/NOTIFY only if
+`useListenNotify` is on (default false), and that doesn't work through PgBouncer in
+transaction mode [constructor]. The only advisory lock its docs mention is
+`pg_advisory_xact_lock`, which is transaction-scoped [backends]. So the pooler would
+probably work too; direct is simply what we have.
+Trade-off: workers poll the database, by default "1 job every 2 seconds" [workers]. Neon's
+free plan has 100 CU-hours per project per month and scales to zero only after 5 minutes
+of inactivity, which can't be changed on Free [neon-plans]. My reasoning (to be measured
+in 6c): while the API is awake, polling every 2 s means Neon is never idle for 5 minutes.
+Render's sleep and that budget must be planned together.
+Revisit if: polling uses too much of Neon's budget, or Redis arrives anyway (phase 7).
+Sources:
+- [jobs] https://pgboss.io/api/jobs
+- [queues] https://pgboss.io/api/queues
+- [scheduling] https://pgboss.io/api/scheduling
+- [constructor] https://pgboss.io/api/constructor
+- [workers] https://pgboss.io/api/workers
+- [backends] https://pgboss.io/database-backends
+- [readme] https://github.com/timgit/pg-boss
+- [neon-pooling] https://neon.com/docs/connect/connection-pooling
+- [neon-plans] https://neon.com/docs/introduction/plans
+- [upstash-pricing] https://upstash.com/pricing/redis
+- [upstash-bullmq] https://upstash.com/docs/redis/integrations/bullmq

@@ -11,7 +11,8 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
-    "lab:locking": "tsx src/lab/locking-bench.ts"
+    "lab:locking": "tsx src/lab/locking-bench.ts",
+    "email:test": "tsx src/scripts/email-test.ts"
   },
   "keywords": [],
   "author": "",

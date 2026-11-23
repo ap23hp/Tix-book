@@ -1059,3 +1059,48 @@ automatically.
 - "Every seat number in the app comes from one function, so the organiser's dashboard and
   the public page can't disagree."
 - "Organisers see attendee names, not emails: they don't need them to run the event."
+
+## 2026-11-23 — Phase 6a: sending email safely
+
+**An interface, not a vendor:** the app calls `sendEmail(message)`. Behind it is an
+`EmailSender`: the real one calls Resend's HTTP API with `fetch`, tests use a fake that only
+records messages. Tests never send email and need no key.
+
+**Two kinds of failure:** a timeout or a 5xx might work next time (retryable); a 422 or a
+bad key never will (permanent). Sorting them now means the queue in 6b retries only what can
+succeed. A quota that's used up (429 daily quota) is permanent too: it resets at midnight.
+
+**Idempotency again:** each email has a key like `booking-confirmed/<bookingId>`. Resend
+remembers it for 24 hours, so if a send times out and we retry, the attendee still gets one
+email.
+
+**Sandbox mode:** without a domain, Resend delivers only to my own address. The allowlist
+makes that explicit: anyone else is skipped and logged, never an error. Unset means nobody.
+
+**Escaping:** event titles come from organisers. `<script>` or `<a href>` in a title would
+become real HTML in the email, so every value is escaped. Breaking `escapeHtml` on purpose
+failed 2 tests; so did letting everyone through the sandbox.
+
+**Small surprise:** Node formats en-GB dates as "Saturday, 5 December" (with a comma). My
+first test expected no comma; the test was wrong, not the code.
+
+**Interview lines:**
+- "I depend on an interface, not a vendor, so tests never send real email and swapping
+  providers changes one file."
+- "I only retry errors that can succeed on a retry, and the idempotency key makes the retry
+  safe."
+
+**A test that passed for the wrong reason (time zones):** my laptop is in Europe/London, so
+a date formatted with the server's zone by mistake still looked right. I broke it on purpose
+and the test passed. Setting `process.env.TZ` inside a test file doesn't help: Jest runs each
+file in a sandbox with its own copy of `process.env`. Fix: `jest.global-setup.js` sets
+`TZ=UTC` once, in the main process, before any test runs, so every API test runs like
+Render. Now the broken version fails 2 tests.
+
+**First real email (23 Nov):** `npm run email:test` sent one email through Resend. It arrived
+in the inbox, not spam, and `<check escaping>` showed as text. The link was rewritten
+through resend-clicks.com (click tracking), which we can't turn off without our own
+domain (decision 049).
+
+**Interview line:** "My tests run in UTC like the server, so a time zone bug can't hide
+behind my laptop's settings."

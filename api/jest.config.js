@@ -9,4 +9,6 @@ export default {
     "^.+\\.ts$": ["ts-jest", { useESM: true }],
   },
   testMatch: ["**/src/**/*.test.ts"],
+  // Run every test in UTC, like Render (see the file for why)
+  globalSetup: "./jest.global-setup.js",
 };
