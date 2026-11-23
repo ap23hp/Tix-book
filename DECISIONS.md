@@ -764,3 +764,36 @@ Sources:
 - [neon-plans] https://neon.com/docs/introduction/plans
 - [upstash-pricing] https://upstash.com/pricing/redis
 - [upstash-bullmq] https://upstash.com/docs/redis/integrations/bullmq
+
+## 051 — How the confirmation email job runs
+Date: 2026-11-23
+**Saved with the booking.** The job (`{ bookingId }` only, no address or content) is
+saved with `send(..., { db: fromPrisma(tx) })` inside the transaction that sets
+CONFIRMED: the Stripe webhook (decision 041) and free bookings. Two webhook copies at
+once still make one job, because only the copy that confirms under the row lock saves
+one (tested).
+**Built when it runs, not when it's queued.** The worker reads the booking fresh: if it
+was refunded in between, nothing is sent.
+**What a result means:**
+- sent, or skipped on purpose (sandbox, no key, booking gone) → completed
+- a retryable error (timeout, 5xx, rate limit, or the database) → failed; pg-boss retries
+  5 times with exponential backoff from 30 s (about 15 minutes in all), then moves it to
+  the dead letter queue `email.dead-letter`
+- a permanent error (bad key, refused address) → straight to the dead letter queue:
+  retrying the same request gets the same answer
+- the stored output holds only the error name, never an address, key or Resend's text
+**pg-boss starts before the API takes requests** (`index.ts`). A confirm needs the
+queue, so if pg-boss can't start, the process exits and the deploy fails, instead of
+running and failing bookings.
+**Worker settings:** one job at a time, polling every 5 s (default 2 s; fewer queries,
+and a few seconds' delay doesn't matter for an email), pool of 3 connections.
+**Tests use their own schema** (`pgboss_test`), so a test's job can never be sent by
+a local API's worker on the same dev database. The retry and dead letter tests run a
+real worker on real queues with 1-2 s delays.
+**Node:** pg-boss needs Node 22.12+, so `api/package.json` now has `engines.node`
+`>=22.12.0 <25` (local is 22; Render's docs say services created since 21 Oct 2026
+default to 24.22.1, and Render reads `engines` if nothing else sets the version).
+Trade-off: a confirmed booking whose email fails 6 times stays in the dead letter queue
+until someone redrives it; nobody is alerted yet (monitoring is phase 8). The pgboss
+schema is created in the production database on the first deploy.
+Revisit if: emails need to go out faster (lower polling), or job volume grows.

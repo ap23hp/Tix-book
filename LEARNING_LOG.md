@@ -1104,3 +1104,43 @@ domain (decision 049).
 
 **Interview line:** "My tests run in UTC like the server, so a time zone bug can't hide
 behind my laptop's settings."
+
+## 2026-11-23 — Phase 6b: a job queue for the confirmation email
+
+**A queue:** the booking doesn't send the email. It saves a small job row; a worker in
+the same API process picks it up a few seconds later. If Resend is slow or down, the
+booking doesn't notice.
+
+**Same transaction (outbox idea):** the job is saved with the transaction that confirms
+the booking, through pg-boss's `fromPrisma(tx)` adapter. A test throws after saving the
+job: the rollback removes it. Breaking this on purpose (saving with pg-boss's own
+connection) failed that test.
+
+**Retries, backoff, dead letter queue:** retryable errors are tried 6 times in all, with
+waits that double (30 s, 1 min, 2 min...). A permanent error goes straight to the dead
+letter queue. Tested with a real worker and 1-2 s delays: 3 tries then dead-lettered;
+a permanent error tried once; fail once then completed. Breaking the sorting on purpose
+failed 2 tests.
+
+**A pg-boss rule I hit:** `retryDelayMax` is only allowed with `retryBackoff: true`. My
+first test turned backoff off and createQueue refused it. Fix: keep backoff on in the
+test, with tiny delays, so the test also runs the real backoff path.
+
+**A startup bug I found:** run from the repo root, the API couldn't start: dotenv reads
+`.env` from the current folder, so DATABASE_URL was empty, and pg failed with "client
+password must be a string". Prisma connects lazily, so this never showed before; pg-boss
+connects at startup. Now startJobs() says plainly that DATABASE_URL is missing.
+
+**My own mistake:** a "break it on purpose" script restored files with `git checkout`,
+which also threw away my uncommitted change to payments.ts. I re-applied it and re-ran
+everything. Lesson: restore from a copy, or commit first.
+
+**Manual check (dev):** booked a free event through the running API as a throwaway test
+user; the worker logged `skipped: sandbox (booking-confirmed/<id>)` a few seconds later.
+Test data and the job were deleted afterwards.
+
+**Interview lines:**
+- "The job is written in the same transaction as the booking, so there's never a
+  confirmed booking without its email, or an email for a booking that rolled back."
+- "I only retry errors that can succeed on a retry; the rest go straight to a dead
+  letter queue."
