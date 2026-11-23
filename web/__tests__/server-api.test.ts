@@ -5,6 +5,7 @@ import {
   getMyBookings,
   getMyEvent,
   getMyEvents,
+  getTicketToken,
 } from "@/lib/server-api";
 
 jest.mock("next/headers", () => ({ cookies: jest.fn() }));
@@ -97,5 +98,28 @@ describe("getMyBookings", () => {
       "http://api.test/api/v1/bookings/mine",
       expect.objectContaining({ headers: { Cookie: "session=abc123" } }),
     );
+  });
+});
+
+describe("getTicketToken", () => {
+  it("returns the signed ticket for my confirmed booking", async () => {
+    withCookie("abc123");
+    mockFetch(200, { token: "header.payload.signature" });
+
+    await expect(getTicketToken("b1")).resolves.toBe(
+      "header.payload.signature",
+    );
+    expect(global.fetch).toHaveBeenCalledWith(
+      "http://api.test/api/v1/bookings/b1/ticket",
+      expect.objectContaining({ headers: { Cookie: "session=abc123" } }),
+    );
+  });
+
+  it("returns null when there's no ticket, so the page still loads", async () => {
+    withCookie("abc123");
+    mockFetch(409, { error: "Only a confirmed booking has a ticket" });
+    jest.spyOn(console, "error").mockImplementation(() => {});
+
+    await expect(getTicketToken("b1")).resolves.toBeNull();
   });
 });

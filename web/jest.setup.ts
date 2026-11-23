@@ -5,7 +5,12 @@ import "@testing-library/jest-dom";
 // and pressing Escape does nothing. This stand-in copies only the parts our
 // Modal relies on: open/close, the "close" event, and Escape → "cancel" → close.
 // It does NOT copy the focus trap or focus return; check those in a real browser.
-if (typeof HTMLDialogElement.prototype.showModal !== "function") {
+// Skipped in test files that run in Node (@jest-environment node), which
+// have no DOM at all.
+if (
+  typeof HTMLDialogElement !== "undefined" &&
+  typeof HTMLDialogElement.prototype.showModal !== "function"
+) {
   HTMLDialogElement.prototype.showModal = function (this: HTMLDialogElement) {
     this.setAttribute("open", "");
   };
