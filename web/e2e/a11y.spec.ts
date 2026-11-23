@@ -1,6 +1,12 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
-import { createEvent, sendPaidWebhook, signUp, webhookSecret } from "./helpers";
+import {
+  createEvent,
+  holdSeats,
+  sendPaidWebhook,
+  signUp,
+  webhookSecret,
+} from "./helpers";
 
 // Automated accessibility checks with axe (the engine behind axe DevTools)
 // against WCAG 2.2 A and AA. Automated tools find only part of the problems,
@@ -20,6 +26,11 @@ async function expectNoAxeViolations(page: Page) {
       v.nodes.map((n) => `    ${n.target.join(" ")}`).join("\n"),
   );
   expect(problems, problems.join("\n\n")).toEqual([]);
+}
+
+// The value next to a term in a <dl> (<dt>term</dt><dd>value</dd>)
+function stat(page: Page, term: string) {
+  return page.locator("dt", { hasText: term }).locator("+ dd");
 }
 
 // Wait until the streamed part of the page has arrived
@@ -126,6 +137,38 @@ test.describe("logged in as an organiser", () => {
     await expect(
       page.getByRole("dialog", { name: "Discard changes?" }),
     ).toBeVisible();
+    await expectNoAxeViolations(page);
+  });
+
+  test("event dashboard, empty and with a booking", async ({
+    page,
+    playwright,
+    baseURL,
+  }) => {
+    await openAndWait(page, `/my-events/${eventId}`, "E2E accessibility event");
+    await expect(page.getByText("No bookings yet.")).toBeVisible();
+    await expectNoAxeViolations(page);
+
+    // An attendee (another browser) books 2 seats of this free event
+    const attendee = await playwright.request.newContext({ baseURL });
+    await signUp(attendee, "ATTENDEE", "E2E Dashboard Attendee");
+    await holdSeats(attendee, eventId, 2);
+    await attendee.dispose();
+
+    await openAndWait(page, `/my-events/${eventId}`, "E2E accessibility event");
+    const row = page
+      .getByRole("row")
+      .filter({ hasText: "E2E Dashboard Attendee" });
+    await expect(row).toContainText("Confirmed");
+    await expect(stat(page, "Confirmed")).toHaveText("2 of 20");
+    await expectNoAxeViolations(page);
+
+    // At phone width only the table's own box scrolls, never the page
+    await page.setViewportSize({ width: 375, height: 800 });
+    const pageScrollsSideways = await page.evaluate(
+      () => document.documentElement.scrollWidth > window.innerWidth,
+    );
+    expect(pageScrollsSideways).toBe(false);
     await expectNoAxeViolations(page);
   });
 
