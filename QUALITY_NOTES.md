@@ -76,6 +76,27 @@ Testing approach, accessibility checks, known issues and things to review.
 - Manual check (23 Nov): a real local payment with the 4242 test card through `stripe listen` confirmed the booking.
 - Production payments haven't been tested by me (no data may be created in production); to check by hand: book a paid event on the live site and pay with the 4242 card.
 
+## Email and jobs testing (phase 6, 23–24 Nov 2026)
+- API tests never call Resend: a `FakeEmailSender` records messages. They use their own
+  pg-boss schema (`pgboss_test`), so a test job can never be sent by a running local API.
+- Covered: sandbox allowlist, escaping, no ticket JWT or meeting link in emails, London time
+  on a UTC server in BST and GMT, the job saved in the booking's transaction (rollback leaves
+  none), one job per confirmation even for duplicate webhooks, reminders (timing, skipped
+  for refunded/cancelled/started, rescheduled when moved), retries → dead letter with a real
+  worker, permanent errors skipping retries, redrive, and the circuit breaker (fake clock).
+- Manual checks: one real email through Resend (`npm run email:test`, 23 Nov: delivered to
+  the inbox, escaping shown as text); a free booking through the running dev API (worker
+  logged `skipped: sandbox`, test data deleted).
+- Known limits: sandbox mode (only the Resend account's address receives email), Resend's
+  click-tracking links on `resend.dev` (decision 049), reminders arrive ~21–24 h before the
+  event (decision 052). Nobody is alerted about dead-lettered jobs yet (phase 8).
+- Not checked by me: production email sending and the scheduled wake-up (read-only rule);
+  check by booking a free event on the live site as yourself, and with "Run workflow".
+- Seed users (24 Nov, read-only check): the seed has never set a password for any user (every
+  version in git history), password login refuses users without a password hash, and Google
+  login requires `email_verified`, which an `example.com` address can't get. No password is
+  in the repo or its history.
+
 ## Open questions
 - **Vercel and `?limit=100` (20 Nov 2026), not explained yet.** `GET /api/v1/events?limit=100`
   through the Vercel rewrite (tix-book.vercel.app) returned events, but the same request to

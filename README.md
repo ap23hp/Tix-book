@@ -20,8 +20,9 @@ When many people try to book the last few seats of an event at the same moment, 
 - **Payments with Stripe (test mode):** Stripe Checkout, confirmed only by a **signed webhook**, never by the redirect page. Duplicate webhooks are handled twice over (handled-event ids, and the payment id stored on the booking under the row lock); a payment that arrives after the hold ended is confirmed if seats are still free, otherwise refunded with an idempotency key ([decisions 041–045](./DECISIONS.md)).
 - **Signed tickets:** the QR code is a JWT (HS256, with the algorithm, issuer, audience and expiry all checked). The door check also asks the database, because a JWT can't be revoked: a refunded ticket is refused ([decision 046](./DECISIONS.md)).
 - **Organiser dashboard:** confirmed, held and left seats and revenue per event, from the same counting rule as "seats left" in one grouped query; attendees by name only ([decision 048](./DECISIONS.md)).
+- **Email through a job queue:** confirmation and reminder emails go through a queue in Postgres (pg-boss). The job is saved **in the same transaction** that confirms the booking, so there's never a confirmed booking without its email. Retries with exponential backoff, a dead letter queue, and a circuit breaker that stops calling the email provider while it's down. Reminders are re-checked when they run (cancelled, refunded or moved events), and a scheduled GitHub Action wakes the sleeping API so they go out ([decisions 049–053](./DECISIONS.md)).
 - **Accessibility:** axe (WCAG 2.2 A + AA) runs on 15 page states with no violations, plus a manual keyboard pass, a native `<dialog>` focus trap, and screen-reader live regions for toasts and the countdown.
-- **Tests:** 117 API tests (Jest + Supertest), 156 web unit and component tests (Jest + React Testing Library), 17 end-to-end tests (Playwright: the full booking and payment flow, two users at once, axe on every page state). Important tests were proven by breaking the code on purpose and watching them fail.
+- **Tests:** 162 API tests (Jest + Supertest), 156 web unit and component tests (Jest + React Testing Library), 17 end-to-end tests (Playwright: the full booking and payment flow, two users at once, axe on every page state). Important tests were proven by breaking the code on purpose and watching them fail.
 
 ## Screenshots
 
@@ -51,9 +52,11 @@ flowchart LR
     P --> N[("Neon<br/>PostgreSQL")]
     B -->|"pays on Stripe's page"| S["Stripe Checkout<br/>(test mode)"]
     S -->|"signed webhook"| R
+    R -->|"emails (HTTP API)"| E["Resend<br/>(sandbox)"]
+    G["GitHub Actions<br/>every 3 hours"] -->|"GET /health<br/>(wakes the API)"| R
 ```
 
-The browser only ever talks to the Vercel site. Pages are Server Components that fetch from the API on the server, so the API's address stays in a server-only environment variable. Requests from the browser (logging in, booking) go to `/api/*` on the same site, and Vercel rewrites them to the Express API on Render. That keeps the session cookie first-party and means no CORS setup is needed. The API enforces every rule (who is logged in, roles, who owns an event, seats left), because the client can always be bypassed. Payments go the other way round: the browser pays on Stripe's own page, and Stripe tells the API by calling its webhook directly (signed with a shared secret). That webhook is the only thing that confirms a booking. Prisma talks to PostgreSQL on Neon; the seat lock is raw SQL, because Prisma has no `FOR UPDATE`.
+The browser only ever talks to the Vercel site. Pages are Server Components that fetch from the API on the server, so the API's address stays in a server-only environment variable. Requests from the browser (logging in, booking) go to `/api/*` on the same site, and Vercel rewrites them to the Express API on Render. That keeps the session cookie first-party and means no CORS setup is needed. The API enforces every rule (who is logged in, roles, who owns an event, seats left), because the client can always be bypassed. Payments go the other way round: the browser pays on Stripe's own page, and Stripe tells the API by calling its webhook directly (signed with a shared secret). That webhook is the only thing that confirms a booking. Prisma talks to PostgreSQL on Neon; the seat lock is raw SQL, because Prisma has no `FOR UPDATE`. Emails are jobs in the same Postgres (pg-boss, in its own `pgboss` schema), sent by a worker inside the API process through Resend's HTTP API. Because Render's free plan sleeps, a scheduled GitHub Actions workflow calls `/health` every 3 hours, so reminders that are due get sent.
 
 ## Key decisions and trade-offs
 
@@ -103,6 +106,11 @@ Real problems from running the live app, and what changed because of them:
 - **Login forms kept old passwords and errors after navigating away (16 Nov, #27).** With Cache Components, Next.js hides pages instead of removing them, so form state stays. Fix: clear login and sign-up forms when the page is hidden, plus a test that hides and shows the form.
 - **A Next.js security release (17 Nov, #32).** Upgraded to Next.js 16.4.6 the same day.
 
+Caught before release (phase 6):
+
+- **A time zone test that passed for the wrong reason.** My laptop is in London, so formatting an email's date in the server's time zone by mistake still looked right, and a test set up to catch it passed. Setting `TZ` inside a Jest test file doesn't reach the real process. Fix: every API test now runs in UTC, like Render (`jest.global-setup.js`), and the broken version fails.
+- **The API couldn't start from the repo root.** `dotenv` reads `.env` from the current folder, so `DATABASE_URL` was empty and pg-boss failed with "client password must be a string". Prisma connects lazily, so this never showed before; pg-boss connects at startup. It now says plainly that `DATABASE_URL` is missing.
+
 Caught before release (phase 5):
 
 - **A migration file Postgres couldn't read.** Windows PowerShell 5.1 saved it with an invisible byte-order mark: `syntax error at or near "\u{feff}"`. Nothing was applied; I removed the 3 bytes and, before merging, checked the first bytes of the file in the commit itself.
@@ -136,6 +144,8 @@ You need Node.js 22 and a PostgreSQL database for development (for example a fre
 - [`api/.env.example`](./api/.env.example) → copy to `api/.env`: `DATABASE_URL` (the dev database), `SEED_ALLOWED_HOST` (the seed refuses to run on any other host), optional `PORT`, and the optional `GOOGLE_*` settings for "Continue with Google"
 - [`web/.env.example`](./web/.env.example) → copy to `web/.env.local`: `API_URL`, the address of your local API
 
+Email (optional): put a Resend API key, `EMAIL_FROM` and `EMAIL_SANDBOX_ALLOWLIST` (your own address) in `api/.env`. Without a key, emails are skipped and logged; bookings work the same. `npm run email:test` sends one sample email to the allowlisted address. Start the API from the `api/` folder, so its `.env` is found.
+
 ```bash
 # API (port 4000)
 cd api
@@ -164,11 +174,33 @@ npm run dev
 
 | Where | Command | What runs |
 |---|---|---|
-| `api/` | `npm test` | 117 API tests (Jest + Supertest). They use the dev database and delete their own test data. Stripe is never called: its network calls are replaced, and webhooks are signed with a test secret. |
+| `api/` | `npm test` | 162 API tests (Jest + Supertest). They use the dev database and delete their own test data, and run in UTC like Render. Stripe and Resend are never called: their network calls are replaced, and webhooks are signed with a test secret. Background jobs use a separate `pgboss_test` schema. |
 | `web/` | `npm test` | 156 unit and component tests (Jest + React Testing Library) |
 | `web/` | `npm run test:e2e` | 17 end-to-end and accessibility tests (Playwright + axe). Starts the local API and web app, or reuses running ones. Run `npx playwright install chromium` once first. The payment test needs Stripe set up locally (it skips otherwise). |
 | `api/`, `web/` | `npm run lint` | ESLint; in `web/` this includes the jsx-a11y accessibility rules |
 | `api/` | `npm run lab:locking` | The locking benchmark (dev database only) |
+
+## Deploy
+
+| Part | Where | Notes |
+|---|---|---|
+| Web | Vercel | Root Directory `web`. `API_URL` points at the Render API. Every branch gets a Preview deployment; `main` goes to Production. |
+| API | Render (free web service) | Environment variables: `DATABASE_URL` (Neon production branch), `WEB_URL`, the `GOOGLE_*` settings, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `TICKET_JWT_SECRET`, `RESEND_API_KEY`, `EMAIL_FROM`, `EMAIL_SANDBOX_ALLOWLIST`. Values live only in Render, never in the repo. |
+| Database | Neon | `production` branch for Render, `dev` branch for local work and tests (decision 019). pg-boss creates its own `pgboss` schema the first time the API starts. |
+| Wake-up | GitHub Actions | `.github/workflows/wake-api.yml` calls `/health` every 3 hours (decision 052). It can also be run by hand from the Actions tab. |
+
+**Node version on Render:** set by the `NODE_VERSION` environment variable in Render (currently `22.23.5`), which Render's docs give the highest priority. `"engines"` in `api/package.json` (`>=22.12.0 <25`, because pg-boss needs 22.12+) only declares the range the code supports; Render uses it only when nothing else sets the version (decision 054).
+
+## How I'd scale email
+
+Phase 6 sends a few emails a day in sandbox mode. For real traffic I would:
+
+- **Use our own domain** and verify it with **SPF** (which servers may send for it), **DKIM** (a signature on each email) and **DMARC** (what receivers should do when those checks fail, and where to send reports). Without them, email goes to spam or is refused. This also removes Resend's sandbox and the click-tracking links (decision 049).
+- **Suppress bounces and complaints:** listen to the provider's webhooks and stop emailing addresses that bounced or marked us as spam. Sending to them again hurts the domain's reputation for everyone.
+- **Unsubscribe for anything that isn't transactional** (reminders could count as marketing to some people): a one-click unsubscribe link and header, and a preferences table checked before sending. Booking confirmations stay, because they're part of the service.
+- **Run the worker as a separate process**, not inside the web API: a slow email backlog then can't slow down bookings, and the two can be scaled and deployed separately. The queue already makes this a small change.
+- **Move to Amazon SES at volume:** much cheaper per email, but more setup (sandbox approval, its own bounce handling through SNS). Keep the `EmailSender` interface, so it's one new class.
+- Watch the numbers: queue length, dead letter count, bounce and complaint rates, with alerts (phase 8).
 
 ## Roadmap
 
@@ -179,8 +211,8 @@ npm run dev
 | 3 | Search, pagination, my events and editing, UI kit, accessibility, end-to-end tests | ✅ Done |
 | 4 | Booking and concurrency: 5-minute seat holds, row locking, idempotency, "My tickets" | ✅ Done |
 | 5 | Payments: Stripe Checkout, signed webhooks, refunds, signed ticket QR codes, organiser dashboard | ✅ Done |
-| 6 | Background jobs: confirmation and reminder emails, retries | Next |
-| 7 | Performance: indexes, caching, rate limiting, Core Web Vitals | Planned |
+| 6 | Background jobs: confirmation and reminder emails, retries, dead letter queue, circuit breaker | ✅ Done |
+| 7 | Performance: indexes, caching, rate limiting, Core Web Vitals | Next |
 | 8 | Docker, CI/CD, monitoring | Planned |
 | 9 | Real users, load test, "How I'd scale this" | Planned |
 

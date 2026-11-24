@@ -196,13 +196,13 @@ Explain test: webhooks, why never trust the redirect page alone, idempotency key
 **Goal:** confirmation and reminder emails sent reliably.
 
 Tasks
-- [ ] Choose queue: Postgres-based (pg-boss) or Redis, log why (watch Upstash command limits)
-- [ ] Confirmation email via the queue
-- [ ] Reminder email before the event (scheduled job)
-- [ ] Retries with exponential backoff
-- [ ] Dead letter queue for jobs that keep failing
-- [ ] Timeouts and a simple circuit breaker around the email provider
-- [ ] Tests: failed job is retried, then goes to the dead letter queue
+- [x] Choose queue: Postgres-based (pg-boss) or Redis, log why (watch Upstash command limits)
+- [x] Confirmation email via the queue
+- [x] Reminder email before the event (a delayed job, plus a GitHub Actions schedule that wakes Render, decision 052)
+- [x] Retries with exponential backoff
+- [x] Dead letter queue for jobs that keep failing
+- [x] Timeouts and a simple circuit breaker around the email provider
+- [x] Tests: failed job is retried, then goes to the dead letter queue
 
 Concepts: message queues, retries, exponential backoff, dead letter queues, timeouts, circuit breakers, cron jobs, event loop
 Explain test: why use a queue, backoff, dead letter queue, circuit breaker
