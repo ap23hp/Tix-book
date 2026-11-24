@@ -14,25 +14,8 @@ import { seatSummaries, withSeatsLeft } from "../lib/seats.js";
 import { expireHolds, holdSeats } from "../lib/bookings.js";
 import { bookingEventSelect, bookingView } from "../lib/booking-view.js";
 import { holdSeatsSchema } from "../schemas/booking.js";
+import { findOwnEvent } from "../lib/own-event.js";
 export const eventsRouter = Router();
-
-// The ownership check (IDOR protection), used by every "my event" route.
-// The id comes from the URL, so anyone can send any id: load the event and
-// compare its owner with the logged-in user. An unknown id and someone
-// else's event get the same 404, so the API never confirms that another
-// organiser's event exists (decision 032).
-//
-// `id` is the raw req.params.id. After middleware, Express only types it as
-// string | string[] | undefined, so check it here once for every route.
-async function findOwnEvent(id: unknown, organiserId: string) {
-  if (typeof id !== "string") throw new HttpError(404, "Event not found");
-
-  const event = await prisma.event.findUnique({ where: { id } });
-  if (!event || event.organiserId !== organiserId) {
-    throw new HttpError(404, "Event not found");
-  }
-  return event;
-}
 
 // GET /api/v1/events → published, upcoming events, soonest first.
 // Cursor pagination: returns { events, nextCursor }.

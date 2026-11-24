@@ -90,6 +90,9 @@ model Booking {
   // Refunds are made against it, so it's unique: one payment, one booking.
   stripePaymentIntentId String?       @unique
   idempotencyKey        String        @unique
+  // When the ticket was scanned at the door; null = not checked in yet.
+  // Set by one conditional update, so it can only be set once (decision 055).
+  checkedInAt           DateTime?
   createdAt             DateTime      @default(now())
   updatedAt             DateTime      @updatedAt
 
