@@ -1219,3 +1219,38 @@ just which settings exist.
 **Interview line:** "I treat email as a background job with an outbox-style enqueue,
 retries, a dead letter queue and a circuit breaker, and I can explain what each one
 protects against."
+
+## 2026-11-24 — Door scanner and check-in (#67)
+
+**Compare-and-set in one UPDATE:** check-in is `UPDATE … SET checkedInAt = now WHERE id = …
+AND checkedInAt IS NULL`. The number of rows changed tells me who won: 1 = let them in,
+0 = someone already did. Postgres locks the row during the update and re-checks the WHERE
+for anyone who was waiting, so two scanners can't both win (decision 055).
+
+**A race test can pass for the wrong reason:** my first "10 scans at once" test passed even
+with `checkedInAt IS NULL` removed. The first scan was ~200 ms ahead (it was opening a
+database connection), so it finished before the others read the row. Warming up the
+connections first made the scans really overlap; then the broken version let 9–10 people
+in. Lesson: always break a concurrency test on purpose and look at the timing.
+
+**Scan outcomes are 200, not errors:** "already used" isn't a bad request, it's the answer.
+4xx is only for problems with the request itself (no code, not logged in, not your event).
+
+**Camera on the web:** `getUserMedia` (HTTPS + permission) gives a video stream;
+`BarcodeDetector.detect(video)` finds QR codes in the current frame. The library loads with
+`import()` only when the camera starts. Tracks must be stopped when the page is hidden.
+
+**Accessible results:** one `role="status"` region that is always in the page, so each new
+result is announced. Every result is a sentence ("Already used at 19:05"); the ✕ icon and
+red border only repeat it (WCAG 1.4.1: not colour alone).
+
+**A bug the full e2e run caught:** the payment test still called the verify API with the old
+body and got 400. A unit-level search for every caller would have found it sooner.
+
+**Breaking it on purpose** (copied first, checked by checksum): removing the race-safe WHERE,
+the wrong-event check, the other-organiser check, the camera cleanup on hide, the same-code
+pause, and the live region each failed tests.
+
+**Interview line:** "Check-in is a compare-and-set in a single UPDATE: the database picks
+exactly one winner, and I proved it with a concurrent test that fails when the condition is
+removed."
