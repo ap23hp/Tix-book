@@ -859,3 +859,18 @@ Trade-off: the state lives in memory, so a restart (or Render waking up) starts 
 and two API instances would each have their own breaker. Fine with one instance.
 Revisit if: the API runs more than one instance, or other providers need the same
 protection.
+
+## 054 — Node version on Render: NODE_VERSION, not "engines"
+Date: 2026-11-24
+**Fact:** the Node version on Render is set by the `NODE_VERSION` environment variable in
+the Render dashboard (currently `22.23.5`). Render's docs list the ways to set it in order
+of precedence: `NODE_VERSION` first, then `.node-version`, then `.nvmrc`, then `engines`
+in `package.json` (https://render.com/docs/node-version).
+**So:** `"engines": { "node": ">=22.12.0 <25" }` in `api/package.json` only **declares**
+the range the code supports (pg-boss needs 22.12+). It doesn't choose the version on
+Render while `NODE_VERSION` is set. Decision 051 said Render reads `engines` "if nothing
+else sets the version"; that's true, but here something else does.
+**To change the version:** change `NODE_VERSION` in Render (keep it inside the declared
+range), and keep local Node in the same range.
+Trade-off: the version is set in two places (Render and the repo) that can disagree.
+Revisit if: we move to Docker (phase 8), where the image pins the version.

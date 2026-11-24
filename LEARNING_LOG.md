@@ -1199,3 +1199,23 @@ calls `redrive()`, and the job runs again and completes.
 
 **Interview line:** "Retries handle one failing request; a circuit breaker stops the
 whole app from hammering a provider that's down, and gives it time to recover."
+
+## 2026-11-24 — Phase 6 wrap-up
+
+**What phase 6 was about:** making slow, unreliable work (email) happen outside the
+request, without ever losing it or doing it twice: a queue saved in the booking's
+transaction, retries with backoff, a dead letter queue, idempotency keys at the provider,
+a circuit breaker, and re-checking delayed jobs when they run.
+
+**Free-plan constraints shaped the design:** Render sleeps and has no cron, Neon has a
+compute budget, Resend needs a domain to email anyone else. Each one became a decision
+with a trade-off written down (049–054).
+
+**Docs vs reality:** I wrote in decision 051 that Render reads `engines` from
+package.json. That's only true when nothing else sets the version; on Render it's the
+`NODE_VERSION` variable. Decision 054 corrects it. Lesson: say which setting wins, not
+just which settings exist.
+
+**Interview line:** "I treat email as a background job with an outbox-style enqueue,
+retries, a dead letter queue and a circuit breaker, and I can explain what each one
+protects against."
