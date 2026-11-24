@@ -76,13 +76,13 @@ test("book seats, pay, and find the ticket on My tickets", async ({
   );
   const { token } = await ticketResponse.json();
   const atTheDoor = await request.post("/api/v1/tickets/verify", {
-    data: { token },
+    data: { eventId, code: token },
   });
   expect(atTheDoor.status()).toBe(200);
-  expect(await atTheDoor.json()).toMatchObject({ valid: true, seats: 2 });
+  expect(await atTheDoor.json()).toMatchObject({ result: "valid", seats: 2 });
   // The attendee can't check tickets (only organisers can)
   const notAllowed = await page.request.post("/api/v1/tickets/verify", {
-    data: { token },
+    data: { eventId, code: token },
   });
   expect(notAllowed.status()).toBe(403);
 

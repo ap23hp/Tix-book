@@ -172,6 +172,21 @@ test.describe("logged in as an organiser", () => {
     await expectNoAxeViolations(page);
   });
 
+  test("ticket scanner, empty and with a result", async ({ page }) => {
+    await openAndWait(page, `/my-events/${eventId}/scan`, "Check tickets");
+    await expectNoAxeViolations(page);
+
+    // A refused code: the result box (a live region) with its message
+    await page
+      .getByLabel("Ticket code or booking reference")
+      .fill("TIX-AAAAAAAA");
+    await page.getByRole("button", { name: "Check ticket" }).click();
+    await expect(
+      page.getByRole("status", { name: "Ticket check result" }),
+    ).toContainText("Not a valid ticket");
+    await expectNoAxeViolations(page);
+  });
+
   test("account", async ({ page }) => {
     await openAndWait(page, "/account", "Your account");
     await expect(

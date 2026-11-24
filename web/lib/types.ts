@@ -133,3 +133,21 @@ export type User = {
   email: string;
   role: Role;
 };
+
+// POST /api/v1/tickets/verify: the answer to one scan at the door.
+// Every outcome is HTTP 200; dates are ISO strings.
+export type CheckInResult =
+  | { result: "valid"; reference: string; seats: number; checkedInAt: string }
+  | {
+      result: "already_used";
+      reference: string;
+      seats: number;
+      checkedInAt: string;
+    }
+  | {
+      result: "no_longer_valid";
+      reference: string;
+      bookingStatus: "refunded" | "cancelled" | "expired" | "held";
+    }
+  | { result: "wrong_event" }
+  | { result: "invalid"; reason: "expired" | "invalid" };

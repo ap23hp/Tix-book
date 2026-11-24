@@ -97,6 +97,24 @@ Testing approach, accessibility checks, known issues and things to review.
   login requires `email_verified`, which an `example.com` address can't get. No password is
   in the repo or its history.
 
+## Door scanner and check-in (#67, 24 Nov 2026)
+- API: every scan answer (valid, already used, refunded/cancelled/held, wrong event,
+  invalid/expired), the reference typed loosely, another organiser's reference, ownership
+  404 / attendee 403, and 10 simultaneous scans of one ticket (exactly 1 valid). The race
+  test warms up the connection pool first; without that it passed with the bug in.
+- Web: a component test per result (words, inside the live region), empty code, 404, no
+  camera, refused permission, a QR seen by a (mocked) camera sent once, the camera stopped
+  on "Stop camera" and when the page is hidden (`<Activity>`).
+- E2E: dashboard → scanner, paste the QR token → valid, the reference → already used,
+  another organiser → 404, an attendee → "only organisers"; axe on the scanner page.
+- Not tested automatically: a real camera reading a real QR code (jsdom and headless
+  Chromium have no camera). To check by hand: open the scanner on a phone over HTTPS
+  (a Vercel preview), scan a ticket from another screen.
+- Flaky once in 5 full e2e runs: on a cold dev server with 4 workers, the scanner page took
+  more than 15 s to compile on its first visit (still on the dashboard). Passed in the
+  other runs; same cause as earlier cold-start notes.
+- Not checked: the migration on production (read-only rule; it runs when the PR is merged).
+
 ## Open questions
 - **Vercel and `?limit=100` (20 Nov 2026), not explained yet.** `GET /api/v1/events?limit=100`
   through the Vercel rewrite (tix-book.vercel.app) returned events, but the same request to

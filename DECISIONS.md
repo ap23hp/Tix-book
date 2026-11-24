@@ -874,3 +874,73 @@ else sets the version"; that's true, but here something else does.
 range), and keep local Node in the same range.
 Trade-off: the version is set in two places (Render and the repo) that can disagree.
 Revisit if: we move to Docker (phase 8), where the image pins the version.
+
+## 055 — Door check-in: one conditional update, and every scan answer is 200
+Date: 2026-11-24
+**Recording a check-in.** `Booking.checkedInAt` (nullable; null = not in yet), set by
+`POST /api/v1/tickets/verify { eventId, code }`.
+Options for "two scanners scan the same ticket at once":
+(1) read the booking, then write `checkedInAt` (two steps)
+(2) a transaction with `SELECT ... FOR UPDATE`, then the write (like bookings, decision 034)
+(3) one conditional UPDATE: `SET checkedInAt = now WHERE id = … AND status = 'CONFIRMED'
+    AND checkedInAt IS NULL`, then look at how many rows changed (chosen)
+(4) a separate CheckIn table with a unique booking id (the second insert fails)
+Why 3: Postgres locks the row while one UPDATE changes it. A second UPDATE of the same
+row waits, then checks its WHERE again on the new row, finds `checkedInAt` set and
+changes nothing. So "1 row changed" = this scanner won, "0" = already used (or no
+longer confirmed). One statement, no transaction to manage, no raw SQL (Prisma's
+`updateMany` returns the count). Option 1 is the bug: proven by a test that scans the
+same ticket 10 times at once (exactly 1 valid, 9 already used). With the
+`checkedInAt IS NULL` condition removed, 9–10 of the 10 scans said "valid".
+Option 2 also works but needs a transaction for something one statement can do. Option 4
+keeps a history (who scanned, undo), which nobody asked for yet.
+**The test first passed with the bug in.** The first scan spent ~200 ms opening a database
+connection and finished alone; the other nine then read a checked-in row. A warm-up
+(10 harmless scans to open the connections) makes the 10 real scans overlap.
+**Answers.** Every scan that reached a decision is `200 { result }`: `valid`,
+`already_used` (with `checkedInAt`), `no_longer_valid` (refunded, cancelled, expired, or
+held = never paid), `wrong_event`, `invalid` (bad or expired ticket). "No entry" is a
+normal answer at the door, not a broken request. 4xx stays for real request problems:
+400 no code, 401/403 not an organiser, 404 not your event (decision 032).
+This changes decision 046's endpoint (it said 422/409); the only callers were tests.
+**The event id** comes from the scanner page, checked with `findOwnEvent` (now in
+`lib/own-event.ts`, shared). A ticket's signed event id must match it → else
+`wrong_event`, without a database query.
+**Reference instead of the QR code.** The paste box also takes the booking reference
+(`TIX-…`, any case), because it's on the booking page and in the email (decision 047).
+A reference isn't signed, but it's random (32^8 ≈ 10^12 codes) and only the attendee has
+it. Another organiser's reference gives the same `invalid` as an unknown one.
+Trade-off: no undo (a ticket scanned by mistake stays used), and one booking is one
+check-in, not one per seat (decision 004). Guessing references isn't rate-limited yet
+(phase 7).
+Revisit if: organisers need undo or per-seat entry (then option 4).
+
+## 056 — Camera scanning: `barcode-detector` (BarcodeDetector API + ZXing WebAssembly)
+Date: 2026-11-24
+Options (npm, checked 24 Nov 2026):
+- the browser's own `BarcodeDetector`: MDN marks it "Limited availability" (not Baseline:
+  missing from some widely used browsers) and HTTPS only, so not enough alone
+- `html5-qrcode` (Apache-2.0): last release April 2023
+- `qr-scanner` (MIT): last release November 2022
+- `jsQR` (Apache-2.0): pure JavaScript, last release April 2021
+- `@zxing/browser` (MIT): still 0.x (0.2.1, July 2026), a JavaScript port of ZXing
+- `barcode-detector` (MIT, v3.2.4, released 15 Nov 2026): the standard BarcodeDetector API,
+  implemented with ZXing-C++ compiled to WebAssembly (`zxing-wasm`, MIT; ZXing-C++
+  itself is Apache-2.0) (chosen)
+Why: maintained (a release this month), permissive licences, and it's the web standard's
+API (`new BarcodeDetector({ formats: ["qr_code"] }).detect(video)`), so the code would
+stay the same if every browser had it built in. Used as a **ponyfill**
+(`barcode-detector/ponyfill`: no change to the global object), the same engine in every
+browser.
+**Loaded only when needed:** `lib/qr-detector.ts` imports it with `import()` when the
+organiser presses "Scan with camera", so the code and the ~950 KB `.wasm` file never load
+for anyone else.
+**The paste-in box always works:** cameras need HTTPS and permission, and some devices
+have none. USB QR scanners act as keyboards (type the code, press Enter), so they work
+with the box too.
+**The camera stops** when the page is left or hidden (Next.js keeps hidden pages with
+`<Activity>`): a hidden page must not keep filming. A test hides the page and checks.
+Trade-off: the `.wasm` file is fetched from jsDelivr (the library's default, pinned to
+`zxing-wasm@3.1.7`), a third-party server; the organiser's browser asks it for the file.
+Revisit if: we add a Content Security Policy (phase 8): then serve the file ourselves with
+`prepareZXingModule({ overrides: { locateFile } })`.

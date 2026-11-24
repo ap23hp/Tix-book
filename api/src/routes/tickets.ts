@@ -1,65 +1,39 @@
 import { Router } from "express";
 import { z } from "zod";
-import { HttpError, parseOrThrow } from "../lib/errors.js";
-import { prisma } from "../lib/prisma.js";
-import { verifyTicket } from "../lib/tickets.js";
+import { checkIn } from "../lib/check-in.js";
+import { parseOrThrow } from "../lib/errors.js";
+import { findOwnEvent } from "../lib/own-event.js";
 import { getUser, requireAuth, requireRole } from "../middleware/auth.js";
 
 export const ticketsRouter = Router();
 
-const verifySchema = z.object({ token: z.string().min(1).max(2000) });
+const verifySchema = z.object({
+  // The event at whose door the organiser is scanning
+  eventId: z.string().min(1).max(100),
+  // The ticket QR code (a signed JWT) or the booking reference, pasted in
+  code: z.string().trim().min(1, "Enter a ticket code").max(2000),
+});
 
-// POST /api/v1/tickets/verify { token } → is this ticket good for entry?
-// For the organiser at the door, scanning the QR code. Two checks:
-// 1. the signature: did WE issue this ticket, unchanged? (no database)
-// 2. the database: is the booking still CONFIRMED? A JWT can't be taken
-//    back, so without this a refunded ticket would still let someone in
-//    (decision 046).
+// POST /api/v1/tickets/verify { eventId, code } → let this person in?
+// For the organiser at the door of their own event. Checks the ticket
+// (signature, then the booking in the database: a JWT can't be taken back,
+// decision 046) and checks it in, once only (decision 055).
+// Every scan outcome is 200 { result, ... }: valid, already_used,
+// no_longer_valid, wrong_event, invalid. 4xx means the request itself was
+// wrong: 400 no code, 401/403 not an organiser, 404 not your event.
 ticketsRouter.post(
   "/verify",
   requireAuth,
   requireRole("ORGANISER"),
   async (req, res) => {
-    const { token } = parseOrThrow(verifySchema, req.body, "Invalid ticket");
+    const { eventId, code } = parseOrThrow(
+      verifySchema,
+      req.body,
+      "Invalid ticket",
+    );
+    // Only at the door of your own event (404 otherwise, decision 032)
+    const event = await findOwnEvent(eventId, getUser(res).id);
 
-    const check = await verifyTicket(token);
-    if (!check.ok) {
-      throw new HttpError(
-        422,
-        check.reason === "expired"
-          ? "This ticket has expired"
-          : "This is not a valid Tixbook ticket",
-      );
-    }
-    const { ticket } = check;
-
-    const booking = await prisma.booking.findUnique({
-      where: { id: ticket.bookingId },
-      include: {
-        event: { select: { id: true, title: true, organiserId: true } },
-      },
-    });
-    // Another organiser's event: the same 404 as an unknown booking, so we
-    // never confirm it exists (decision 032)
-    if (!booking || booking.event.organiserId !== getUser(res).id) {
-      throw new HttpError(404, "Ticket not found");
-    }
-    // The signed claims must still match the booking (defence in depth)
-    if (booking.eventId !== ticket.eventId || booking.seats !== ticket.seats) {
-      throw new HttpError(422, "This is not a valid Tixbook ticket");
-    }
-    if (booking.status !== "CONFIRMED") {
-      throw new HttpError(
-        409,
-        `This ticket is no longer valid (booking ${booking.status.toLowerCase()})`,
-      );
-    }
-
-    res.status(200).json({
-      valid: true,
-      reference: booking.reference,
-      seats: booking.seats,
-      event: { id: booking.event.id, title: booking.event.title },
-    });
+    res.status(200).json(await checkIn(code, event));
   },
 );

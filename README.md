@@ -19,10 +19,11 @@ When many people try to book the last few seats of an event at the same moment, 
 - **Cursor (keyset) pagination** on `(startsAt, id)`: stable when events are added or removed, no duplicates or gaps ([decision 030](./DECISIONS.md)).
 - **Payments with Stripe (test mode):** Stripe Checkout, confirmed only by a **signed webhook**, never by the redirect page. Duplicate webhooks are handled twice over (handled-event ids, and the payment id stored on the booking under the row lock); a payment that arrives after the hold ended is confirmed if seats are still free, otherwise refunded with an idempotency key ([decisions 041–045](./DECISIONS.md)).
 - **Signed tickets:** the QR code is a JWT (HS256, with the algorithm, issuer, audience and expiry all checked). The door check also asks the database, because a JWT can't be revoked: a refunded ticket is refused ([decision 046](./DECISIONS.md)).
+- **Door scanner:** organisers check tickets in with the phone camera or by pasting the code or reference. Check-in is one conditional `UPDATE … WHERE checkedInAt IS NULL`, so two scanners can't both let the same ticket in; 10 simultaneous scans give exactly 1 "valid" ([decisions 055, 056](./DECISIONS.md)).
 - **Organiser dashboard:** confirmed, held and left seats and revenue per event, from the same counting rule as "seats left" in one grouped query; attendees by name only ([decision 048](./DECISIONS.md)).
 - **Email through a job queue:** confirmation and reminder emails go through a queue in Postgres (pg-boss). The job is saved **in the same transaction** that confirms the booking, so there's never a confirmed booking without its email. Retries with exponential backoff, a dead letter queue, and a circuit breaker that stops calling the email provider while it's down. Reminders are re-checked when they run (cancelled, refunded or moved events), and a scheduled GitHub Action wakes the sleeping API so they go out ([decisions 049–053](./DECISIONS.md)).
-- **Accessibility:** axe (WCAG 2.2 A + AA) runs on 15 page states with no violations, plus a manual keyboard pass, a native `<dialog>` focus trap, and screen-reader live regions for toasts and the countdown.
-- **Tests:** 162 API tests (Jest + Supertest), 156 web unit and component tests (Jest + React Testing Library), 17 end-to-end tests (Playwright: the full booking and payment flow, two users at once, axe on every page state). Important tests were proven by breaking the code on purpose and watching them fail.
+- **Accessibility:** axe (WCAG 2.2 A + AA) runs on 17 page states with no violations, plus a manual keyboard pass, a native `<dialog>` focus trap, and screen-reader live regions for toasts and the countdown.
+- **Tests:** 170 API tests (Jest + Supertest), 170 web unit and component tests (Jest + React Testing Library), 19 end-to-end tests (Playwright: the full booking and payment flow, two users at once, axe on every page state). Important tests were proven by breaking the code on purpose and watching them fail.
 
 ## Screenshots
 
@@ -130,7 +131,7 @@ Open questions I haven't solved yet are in [QUALITY_NOTES.md](./QUALITY_NOTES.md
 | Frontend | Next.js 16 (App Router, Server Components, Cache Components), React 19, TypeScript, Tailwind CSS v4 |
 | API | Node.js, Express 5, TypeScript, Zod validation |
 | Auth | Database sessions (own code), Argon2id password hashing, Google login with Arctic |
-| Payments and tickets | Stripe Checkout and webhooks (test mode), JWT tickets with jose, QR codes with qrcode |
+| Payments and tickets | Stripe Checkout and webhooks (test mode), JWT tickets with jose, QR codes with qrcode, scanning with barcode-detector (ZXing WebAssembly) |
 | Database | PostgreSQL (Neon) with Prisma ORM and migrations |
 | Tests | Jest + Supertest (API), Jest + React Testing Library (web), Playwright + axe (end-to-end and accessibility) |
 | Hosting | Vercel (frontend), Render (API), Neon (database), all on free plans |
@@ -174,9 +175,9 @@ npm run dev
 
 | Where | Command | What runs |
 |---|---|---|
-| `api/` | `npm test` | 162 API tests (Jest + Supertest). They use the dev database and delete their own test data, and run in UTC like Render. Stripe and Resend are never called: their network calls are replaced, and webhooks are signed with a test secret. Background jobs use a separate `pgboss_test` schema. |
-| `web/` | `npm test` | 156 unit and component tests (Jest + React Testing Library) |
-| `web/` | `npm run test:e2e` | 17 end-to-end and accessibility tests (Playwright + axe). Starts the local API and web app, or reuses running ones. Run `npx playwright install chromium` once first. The payment test needs Stripe set up locally (it skips otherwise). |
+| `api/` | `npm test` | 170 API tests (Jest + Supertest). They use the dev database and delete their own test data, and run in UTC like Render. Stripe and Resend are never called: their network calls are replaced, and webhooks are signed with a test secret. Background jobs use a separate `pgboss_test` schema. |
+| `web/` | `npm test` | 170 unit and component tests (Jest + React Testing Library) |
+| `web/` | `npm run test:e2e` | 19 end-to-end and accessibility tests (Playwright + axe). Starts the local API and web app, or reuses running ones. Run `npx playwright install chromium` once first. The payment test needs Stripe set up locally (it skips otherwise). |
 | `api/`, `web/` | `npm run lint` | ESLint; in `web/` this includes the jsx-a11y accessibility rules |
 | `api/` | `npm run lab:locking` | The locking benchmark (dev database only) |
 

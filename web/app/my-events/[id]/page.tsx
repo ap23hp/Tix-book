@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { EventDashboard } from "@/components/EventDashboard";
+import { buttonClass } from "@/components/ui/Button";
 import { Spinner } from "@/components/ui/Spinner";
 import { getCurrentUser } from "@/lib/auth";
 import { getEventDashboard } from "@/lib/server-api";
@@ -56,6 +57,16 @@ async function Dashboard({ params }: { params: Promise<{ id: string }> }) {
       <h1 className={`mt-4 text-display-md text-ink ${display}`}>
         {dashboard.event.title}
       </h1>
+      <Link
+        href={`/my-events/${dashboard.event.id}/scan`}
+        className={buttonClass({
+          variant: "secondary",
+          size: "sm",
+          className: "mt-4",
+        })}
+      >
+        Check tickets at the door
+      </Link>
       <EventDashboard dashboard={dashboard} />
     </>
   );
