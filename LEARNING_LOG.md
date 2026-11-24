@@ -1144,3 +1144,32 @@ Test data and the job were deleted afterwards.
   confirmed booking without its email, or an email for a booking that rolled back."
 - "I only retry errors that can succeed on a retry; the rest go straight to a dead
   letter queue."
+
+## 2026-11-23 — Phase 6c: reminder emails, and waking a sleeping server
+
+**Delayed jobs:** `startAfter` keeps a job in the queue until a time. The reminder is
+saved when the booking is confirmed, due 24 hours before the event.
+
+**Check at run time, not queue time:** days pass between queueing and sending. The worker
+reads the booking and event again: refunded, cancelled or started → skip; moved later →
+queue a new reminder instead. The idempotency key includes the start time, so a moved
+event gets a new reminder but a retry never sends twice.
+
+**A server that sleeps can't run a schedule.** Render's free plan sleeps after 15
+minutes. A GitHub Actions workflow calls `/health` every 3 hours; the API wakes, pg-boss
+starts and sends whatever is due. Minute 17, because GitHub says the top of the hour is
+the busiest time and runs can be delayed.
+
+**Budgets:** waking more often means reminders closer to 24 hours, but each wake keeps
+Neon awake about 20 minutes. Every 3 hours is my estimate of a fair balance (about 20 of
+100 CU-hours); I still need to measure it.
+
+**Break tests, the safe way:** I copied each file before breaking it and restored from
+the copy (my new rule after 6b), then checked the working tree was identical. Removing the
+"moved later" check, the cancelled-event check, or the delay each failed tests.
+
+**Interview lines:**
+- "Delayed jobs are re-checked when they run, because the world changes between
+  queueing and sending."
+- "On a free plan that sleeps, I use an external scheduler to wake the server, and I
+  sized the schedule against the database's compute budget."

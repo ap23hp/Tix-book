@@ -1,0 +1,29 @@
+# Wakes the API on Render every 3 hours, so reminder emails that are due get
+# sent (decision 052). Render's free plan sleeps after 15 minutes without
+# traffic and has no cron jobs; while it sleeps, pg-boss's worker isn't
+# running. One request to /health wakes it; pg-boss starts with the API and
+# sends whatever is due within seconds.
+#
+# Only calls a public URL: no secrets, and the token gets no permissions.
+name: Wake the API
+
+on:
+  schedule:
+    # Minute 17, not 0: GitHub says runs at the start of the hour are the
+    # most likely to be delayed. Times are UTC.
+    - cron: "17 */3 * * *"
+  # A "Run workflow" button, to check it by hand
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  wake:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Call /health (waking up takes about a minute)
+        run: >
+          curl --fail --silent --show-error
+          --max-time 120 --retry 3 --retry-delay 20
+          https://tixbook-api.onrender.com/health

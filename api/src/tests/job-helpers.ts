@@ -5,9 +5,14 @@ import { prisma } from "../lib/prisma.js";
 // Tests run in their own pg-boss schema (pgboss_test, lib/jobs.ts), so no
 // worker ever sends these jobs. Each file still deletes the jobs it made.
 
-export async function emailJobsFor(bookingId: string) {
+const EMAIL_QUEUES = [QUEUES.bookingConfirmed, QUEUES.eventReminder];
+
+export async function emailJobsFor(
+  bookingId: string,
+  queue: string = QUEUES.bookingConfirmed,
+) {
   const boss = await startJobs();
-  return boss.findJobs(QUEUES.bookingConfirmed, { data: { bookingId } });
+  return boss.findJobs(queue, { data: { bookingId } });
 }
 
 export async function deleteEmailJobsFor(where: Prisma.BookingWhereInput) {
@@ -17,12 +22,14 @@ export async function deleteEmailJobsFor(where: Prisma.BookingWhereInput) {
   });
   const boss = await startJobs();
   for (const { id } of bookings) {
-    const jobs = await emailJobsFor(id);
-    if (jobs.length > 0) {
-      await boss.deleteJob(
-        QUEUES.bookingConfirmed,
-        jobs.map((job) => job.id),
-      );
+    for (const queue of EMAIL_QUEUES) {
+      const jobs = await emailJobsFor(id, queue);
+      if (jobs.length > 0) {
+        await boss.deleteJob(
+          queue,
+          jobs.map((job) => job.id),
+        );
+      }
     }
   }
 }

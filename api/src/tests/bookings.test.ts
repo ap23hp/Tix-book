@@ -4,7 +4,7 @@ import request from "supertest";
 import app from "../app.js";
 import { prisma } from "../lib/prisma.js";
 import { createSession, SESSION_COOKIE } from "../lib/session.js";
-import { stopJobs } from "../lib/jobs.js";
+import { QUEUES, stopJobs } from "../lib/jobs.js";
 import { deleteEmailJobsFor, emailJobsFor } from "./job-helpers.js";
 
 const runId = Date.now();
@@ -135,6 +135,9 @@ describe("POST /api/v1/events/:id/bookings (hold seats)", () => {
     expect(page.body.seatsLeft).toBe(8);
     // Only held, not paid: no email yet (the Stripe webhook queues it)
     expect(await emailJobsFor(response.body.id)).toHaveLength(0);
+    expect(
+      await emailJobsFor(response.body.id, QUEUES.eventReminder),
+    ).toHaveLength(0);
   });
 
   it("confirms a free event straight away (no hold)", async () => {
@@ -147,8 +150,11 @@ describe("POST /api/v1/events/:id/bookings (hold seats)", () => {
     expect(response.body.status).toBe("CONFIRMED");
     expect(response.body.holdExpiresAt).toBeNull();
     expect(response.body.event.meetingLink).toBe("https://example.com/meet");
-    // Confirmed now, so its email is queued now
+    // Confirmed now, so its email is queued now, and its reminder
     expect(await emailJobsFor(response.body.id)).toHaveLength(1);
+    expect(
+      await emailJobsFor(response.body.id, QUEUES.eventReminder),
+    ).toHaveLength(1);
   });
 
   it("refuses more seats than are left, then sold out", async () => {

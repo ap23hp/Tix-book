@@ -11,6 +11,9 @@ Testing approach, accessibility checks, known issues and things to review.
 - 100 CU-hours of compute per month, 0.5 GB storage, 5 GB transfer. Compute sleeps after 5 minutes idle.
 - ✅ (phase 4) Risk avoided: a cron job querying the database every minute would keep it awake 24/7 (~180 CU-hours/month, over the limit). Hold expiry is lazy instead (decision 035): no scheduled queries.
 - Keep `/health` free of database queries, so uptime monitoring doesn't wake the database.
+- Phase 6 (estimate, to measure): pg-boss polls while the API is awake, so Neon stays awake
+  too. The 3-hourly wake-up (decision 052) adds about 80 awake hours ≈ 20 CU-hours a month.
+  `/health` itself still has no query, but waking the API now starts pg-boss.
 -I will have to design my  scheduled jobs around my database’s compute budget.
 
 ## Seed script (api/prisma/seed.ts)

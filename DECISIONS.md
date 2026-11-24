@@ -797,3 +797,40 @@ Trade-off: a confirmed booking whose email fails 6 times stays in the dead lette
 until someone redrives it; nobody is alerted yet (monitoring is phase 8). The pgboss
 schema is created in the production database on the first deploy.
 Revisit if: emails need to go out faster (lower polling), or job volume grows.
+
+## 052 — Reminder emails, while Render sleeps
+Date: 2026-11-23
+**The job:** when a booking is confirmed, a reminder job is saved in the same transaction
+as the confirmation job (decision 051), with `startAfter` = 24 hours before the event.
+pg-boss doesn't give it to a worker before then. Booked less than 24 hours before the
+event: no reminder (the confirmation is enough).
+**Checked when it runs, days later:** the booking must still be CONFIRMED, the event
+PUBLISHED and not started. If the organiser moved the event later, the job queues a new
+reminder for the new time and finishes without sending. The idempotency key is
+`event-reminder/<bookingId>/<start time>`, so a retry can't send twice, but a moved event
+gets its own reminder. If the event moved earlier, the old job simply runs when it was
+due (or at the next wake-up) and sends if the event hasn't started.
+**Waking Render.** Render's free plan sleeps after 15 minutes and has no cron jobs
+(decision 013), so nothing runs the worker at 3 a.m. Options:
+(1) an external scheduler calling the API (GitHub Actions, cron-job.org)
+(2) a paid Render plan or Render cron job (not free)
+(3) send reminders lazily, when someone happens to use the site (unreliable)
+Chose: 1, a GitHub Actions workflow (`.github/workflows/wake-api.yml`) that calls the
+public `/health` every 3 hours, at minute 17. No secret: `/health` is public and does
+nothing but wake the API; pg-boss starts with it and sends what's due. The workflow's
+token has no permissions (`permissions: {}`).
+Facts (GitHub docs, checked 23 Nov): standard runners are free for public repositories;
+times are UTC; the shortest interval is 5 minutes; runs "can be delayed during periods of
+high loads", and the start of every hour is busiest; in a public repository, scheduled
+workflows are disabled after 60 days without repository activity.
+**Cost (my estimate, to measure):** each wake keeps Render up about 15 minutes, and
+pg-boss's polling keeps Neon awake that long plus Neon's 5 minutes before it sleeps:
+about 20 minutes. 8 a day ≈ 80 hours a month ≈ 20 CU-hours at 0.25 CU, of the free
+100. Every hour would be 3 times that.
+Trade-off: a reminder arrives between about 21 and 24 hours before the event (later if
+GitHub delays a run), not at exactly 24. If GitHub disables the schedule after 60 quiet
+days, reminders stop until it's re-enabled.
+Revisit if: exact timing matters, the Neon numbers are higher than estimated, or the API
+moves to an always-on plan (then the schedule isn't needed).
+Sources: https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule ,
+https://docs.github.com/en/billing/concepts/product-billing/github-actions
