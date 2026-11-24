@@ -944,3 +944,50 @@ Trade-off: the `.wasm` file is fetched from jsDelivr (the library's default, pin
 `zxing-wasm@3.1.7`), a third-party server; the organiser's browser asks it for the file.
 Revisit if: we add a Content Security Policy (phase 8): then serve the file ourselves with
 `prepareZXingModule({ overrides: { locateFile } })`.
+
+## 057 — Ticket QR at the door: draw it bigger first, shrink the token later (maybe)
+Date: 2026-11-24
+Problem (#71): in a real-phone test the scanner only read the ticket QR after it was zoomed
+on the screen. At a door, the attendee shows it on their phone and won't zoom.
+Measured on `main` (959f4cd):
+- Ticket JWT: **315 characters** (header + `ref`, `evt`, `sub`, `seats`, `iss`, `aud`,
+  `iat`, `exp` + HS256 signature)
+- QR: **version 13 = 69 × 69 modules**, error correction M, 2-module margin
+- Drawn in a fixed 192 px box with 8 px padding: **176 px of code = ~2.4 CSS px per module**,
+  on every screen. On a phone that's about 27 mm wide.
+Cause: mostly the **size it was drawn at**. Version 13 is dense but normal for scanners;
+2.4 px per module on a small phone screen isn't. The token makes it worse (see options).
+Chose now (no API change):
+- The QR fills the ticket card: **292 px on a 390 px phone, 384 px on a laptop**, and a
+  **"Show full screen" button: 358 px on a 390 px phone** (measured in Playwright).
+  That's 3.8 / 5.0 / 4.6 px per module instead of 2.4 (the code about 1.9× wider and 3.7× the area
+  in full screen).
+- A **4-module quiet zone** inside the SVG (what the QR standard asks for), instead of a
+  2-module one plus CSS padding: it scales with the code.
+- Pure black on white, white even when the page around it isn't.
+- **Error correction stays M.** L would make each module only ~12% bigger (version 11);
+  drawing it bigger gained far more, and M still reads with ~15% of the code hidden by a
+  crack or a glare spot. Q and H would make it denser (versions 16 and 19).
+- Full screen is our `Modal` with a `fullScreen` option, not the browser's Fullscreen API:
+  iPhone Safari doesn't support the Fullscreen API on normal elements (as far as I know; not
+  checked on a device), and the native `<dialog>` already gives focus trap, Escape and focus
+  return.
+Options to make the QR less dense (not done; measured with the same library, error
+correction M):
+| Option | Token | QR | Security trade-off |
+|---|---|---|---|
+| Today's JWT | 315 chars | v13, 69×69 | — |
+| A. Minimal JWT: only `sub`, `aud`, `exp` | 169 chars | v9, 53×53 | Same HS256 signature and checks. Lose: wrong-event answer without a query (the booking row has `eventId` anyway) and the signed `seats` cross-check (the row is the truth). |
+| B. Compact signed string `t1.<bookingId>.<exp>.<HMAC-SHA256>` (base64url) | 76 chars | v5, 37×37 | Our own format instead of a standard one: we must write and test the parsing and use a constant-time compare ourselves. Full 256-bit HMAC kept (never truncate it). |
+| C. Same as B in uppercase base32 (QR "alphanumeric" mode) | 90 chars | v4, 33×33 | As B. Longer text but fewer modules, because alphanumeric mode uses 5.5 bits a character instead of 8. |
+| D. Only the booking reference (`TIX-XXXXXXXX`) | 12 chars | v1, 21×21 | No signature at all: a guessable-in-theory 40-bit code, checked only in the database (rate limiting matters more). Doesn't meet "don't weaken signature checking". |
+None of the options puts personal data in the code; all of them stay bearer tokens (whoever
+holds the QR gets in once; check-in stops a second use).
+Recommendation if the phone re-test still struggles: **A**. It keeps the standard JWT,
+`jose` and every existing check, and goes from version 13 to 9. Tokens are signed fresh on
+each page view, so the switch is easy, but the verifier should accept both shapes for a
+while (old screenshots of tickets).
+Trade-off of what we chose: nothing changes on the API, but the code is still dense; on
+very old or low-resolution scanner cameras the full-screen view may be needed.
+Revisit if: the re-test on a phone fails at arm's length, or the scanner needs to read from
+printed tickets.

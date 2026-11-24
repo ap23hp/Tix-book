@@ -1254,3 +1254,38 @@ pause, and the live region each failed tests.
 **Interview line:** "Check-in is a compare-and-set in a single UPDATE: the database picks
 exactly one winner, and I proved it with a concurrent test that fails when the condition is
 removed."
+
+## 2026-11-24 — A ticket QR you can scan from a phone (#71)
+
+**Measure before fixing:** the ticket JWT is 315 characters, which the `qrcode` library
+turns into QR version 13 (69 × 69 squares, called modules). The page drew it at 176 px, so
+each module was about 2.4 CSS px. A camera needs a few pixels per module to read it, so it
+only worked when zoomed.
+
+**What makes a QR code easy to read:** big modules (draw it larger, or put less data in it),
+a quiet zone (a white border 4 modules wide, so the scanner can find the edges), and high
+contrast (black on white). Error correction adds spare data so a damaged code still reads,
+but more spare data means more modules: L ~7%, M ~15%, Q ~25%, H ~30%.
+
+**SVG, so it stays sharp:** the QR is an SVG, so CSS can make it any size. The quiet zone is
+now part of the SVG (`margin: 4`), so it grows with the code; CSS padding didn't.
+
+**Full screen with `<dialog>`:** the "Show full screen" button opens our `Modal` with a new
+`fullScreen` option (`h-dvh w-screen`, and `max-*-none` to lift the browser's own size limit
+on dialogs). `dvh` is the height you can really see on a phone, with the address bar.
+
+**Testing sizes:** jsdom has no layout, so Jest can only check the classes. Playwright
+measured the real widths: 384 px on a laptop, 292 px in the card and 358 px full screen on a
+390 px phone.
+
+**A test that passed for the wrong reason:** "only one ticket image on the page" used
+`getAllByRole("img")`, but a closed `<dialog>` is hidden from role queries, so drawing the
+full-screen image all the time still passed. Counting `<img>` elements in the DOM fixed it.
+
+**Breaking it on purpose** (copied first, checked by checksum): a 2-module margin, error
+correction L, the QR not full width, CSS padding back, the full-screen option ignored, and
+the full-screen image always drawn each failed a test.
+
+**Interview line:** "The scanner bug was a pixels-per-module problem: I measured the QR
+version and the drawn size, made it fill the screen with a proper quiet zone, and wrote up
+how to shrink the signed token if that isn't enough."
