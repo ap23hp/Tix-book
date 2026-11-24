@@ -834,3 +834,28 @@ Revisit if: exact timing matters, the Neon numbers are higher than estimated, or
 moves to an always-on plan (then the schedule isn't needed).
 Sources: https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule ,
 https://docs.github.com/en/billing/concepts/product-billing/github-actions
+
+## 053 — A circuit breaker around the email provider
+Date: 2026-11-24
+Options: (1) retries only (pg-boss already retries each job with backoff)
+         (2) a library (e.g. opossum)
+         (3) a small breaker of my own (`lib/circuit-breaker.ts`, ~100 lines)
+Chose: 3.
+Why: retries handle one failed request, not a provider that is down. With Resend down,
+every job would still wait for its 10 s timeout, again on every retry. The breaker
+opens after **5 retryable failures in a row** (timeouts, network errors, 5xx, rate
+limits) and then fails every send at once for **60 s**, without calling Resend. Then one
+trial request (half-open): success closes it, failure opens it for another 60 s. Only
+one trial at a time.
+- A fast failure while open is a **retryable** EmailSendError, so pg-boss retries the job
+  later; no email is lost, it just waits.
+- Errors where Resend answered (bad address, bad key) don't count: the provider is up.
+- Sandbox skips never reach it.
+- One breaker per process, shared by both email workers (same provider).
+- State changes are logged (`[email] circuit closed -> open`), never with addresses.
+- Own code rather than a library: it's small, fully tested with a fake clock, and the
+  point of this project is to understand it. At a company I'd use a maintained library.
+Trade-off: the state lives in memory, so a restart (or Render waking up) starts closed,
+and two API instances would each have their own breaker. Fine with one instance.
+Revisit if: the API runs more than one instance, or other providers need the same
+protection.
