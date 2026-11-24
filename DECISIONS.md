@@ -991,3 +991,31 @@ Trade-off of what we chose: nothing changes on the API, but the code is still de
 very old or low-resolution scanner cameras the full-screen view may be needed.
 Revisit if: the re-test on a phone fails at arm's length, or the scanner needs to read from
 printed tickets.
+
+## 058 — Scanner camera: ask for 1920 × 1080 as an "ideal", never a minimum
+Date: 2026-11-24
+Problem (#73): the scanner asked only for the back camera, so the browser chose the size.
+In Chromium (its fake test camera) that was **640 × 480**. A dense ticket QR (decision
+057: version 13, 69 × 69) needs a few camera pixels per square.
+Options (MDN getUserMedia / MediaTrackConstraints pages, read 24 Nov 2026):
+- `width: { min: 1920 }` or `exact`: guaranteed quality, but these are **required**: a
+  camera that can't do it makes getUserMedia fail with `OverconstrainedError`, and the
+  scanner wouldn't open at all.
+- `width: { ideal: 1920 }, height: { ideal: 1080 }` (chosen): a **preference**. The browser
+  picks the closest size the camera has, and the camera always opens.
+- 1280 × 720 ideal: lighter for the detector, but about 3 camera pixels per square when the
+  QR fills a third of the picture, against about 4.7 at 1080p.
+Measured in Chromium with its fake camera (`--use-fake-device-for-media-stream`):
+facingMode only → 640 × 480; ideal 1920 × 1080 → 1920 × 1080; `min` width 8000 →
+OverconstrainedError; `ideal` width 8000 → still opens (3840 × 2160).
+Kept: `facingMode: "environment"` stays a preference too (a laptop with only a front camera
+still works), the detector still loads only when the camera starts, and the camera still
+stops when the page is hidden.
+How we see what we got: `track.getSettings()` gives the real size. In development the
+scanner logs "asked for 1920 × 1080 (ideal), got W × H"; production builds don't log.
+Trade-off: a 1080p frame is about 7× the pixels of 640 × 480 for the WebAssembly detector to
+check every 300 ms; on an old phone that may be slower or warmer. Not measured on a device.
+Not sure: whether phones in portrait give 1080 × 1920 instead (MDN doesn't say); either way
+the long side is about 1920, which is what matters for squares per pixel.
+Revisit if: scanning feels slow on a phone (try 1280 × 720 ideal), or the re-test still
+needs the QR very close to the camera.
