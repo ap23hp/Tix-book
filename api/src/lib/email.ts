@@ -4,6 +4,8 @@
 // test suite never sends email and needs no API key.
 // HTTP, not SMTP: Render's free plan blocks outgoing SMTP ports.
 
+import { CircuitBreaker, CircuitOpenError } from "./circuit-breaker.js";
+
 export type EmailMessage = {
   to: string;
   subject: string;
@@ -147,6 +149,9 @@ export type EmailSettings = {
   sender: EmailSender | null;
   allowlist: Set<string> | "all";
   log: (line: string) => void;
+  // Stops calling the provider while it's down (phase 6d). Optional, so a
+  // test can leave it out.
+  breaker?: CircuitBreaker;
 };
 
 // The one function the rest of the app calls.
@@ -169,10 +174,44 @@ export async function sendEmail(
     settings.log(`[email] skipped: sandbox (${message.idempotencyKey})`);
     return { status: "skipped", reason: "sandbox" };
   }
-  const { id } = await settings.sender.send(message);
+  const sender = settings.sender;
+  const send = () => sender.send(message);
+  let id: string;
+  try {
+    ({ id } = await (settings.breaker ? settings.breaker.run(send) : send()));
+  } catch (err) {
+    // The breaker is open: we didn't even try. Retryable, so the queue
+    // tries again later, when the provider may be back.
+    if (err instanceof CircuitOpenError) {
+      settings.log(
+        `[email] not sent: circuit open (${message.idempotencyKey})`,
+      );
+      throw new EmailSendError("Email provider circuit open", true);
+    }
+    throw err;
+  }
   settings.log(`[email] sent (${message.idempotencyKey})`);
   return { status: "sent", id };
 }
+
+// One breaker for the whole process: both email workers share it, because
+// they call the same provider.
+// 5 timeouts or 5xx answers in a row → stop calling Resend for 60 seconds.
+// Only retryable errors count: a refused address means Resend is up.
+export function createEmailBreaker(
+  log: (line: string) => void = (line) => console.log(line),
+  now?: () => number,
+): CircuitBreaker {
+  return new CircuitBreaker({
+    failureThreshold: 5,
+    cooldownMs: 60_000,
+    countsAsFailure: (err) => err instanceof EmailSendError && err.retryable,
+    onStateChange: (from, to) => log(`[email] circuit ${from} -> ${to}`),
+    now,
+  });
+}
+
+const emailBreaker = createEmailBreaker();
 
 // ---- Settings from the environment ----
 // Tests set emailGateway.sender to a fake (like stripeGateway, decision 043).
@@ -188,6 +227,7 @@ function emailSettings(): EmailSettings {
       emailGateway.sender !== undefined ? emailGateway.sender : realSender(),
     allowlist: parseAllowlist(process.env.EMAIL_SANDBOX_ALLOWLIST),
     log: (line) => console.log(line),
+    breaker: emailBreaker,
   };
 }
 

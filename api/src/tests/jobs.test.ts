@@ -304,6 +304,32 @@ describe("retries and the dead letter queue (real worker)", () => {
     expect(tries).toBe(2);
     expect(await boss.findJobs(names.deadLetter)).toHaveLength(0);
   }, 30_000);
+
+  it("a dead-lettered job can be redriven, and then succeeds", async () => {
+    // Fails permanently the first time (e.g. a bad API key), works once
+    // the problem is fixed
+    let tries = 0;
+    const { names } = await setUp("redrive", async () => {
+      tries++;
+      if (tries === 1) throw new EmailSendError("Resend answered 401", false);
+      return { status: "sent", id: "fake" };
+    });
+    await boss.send(names.main, { bookingId: "b-redrive" });
+    await waitFor(
+      async () => (await boss.findJobs(names.deadLetter)).length > 0,
+    );
+
+    // After fixing the cause: move dead-lettered jobs back to their queue
+    const moved = await boss.redrive(names.deadLetter);
+    expect(moved).toBe(1);
+    await waitFor(async () => {
+      const jobs = await boss.findJobs(names.main, {
+        data: { bookingId: "b-redrive" },
+      });
+      return jobs.some((job) => job.state === "completed");
+    });
+    expect(tries).toBe(2);
+  }, 30_000);
 });
 
 it("the real queues exist with retries, backoff and a dead letter queue", async () => {
