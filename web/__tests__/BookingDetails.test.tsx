@@ -4,6 +4,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { BookingDetails } from "@/components/BookingDetails";
 import { ToastProvider } from "@/components/ui/Toast";
@@ -239,6 +240,55 @@ describe("BookingDetails", () => {
         name: "Ticket QR code for booking TIX-7KQ2M9XA",
       }),
     ).toHaveAttribute("src", "data:image/svg+xml;utf8,%3Csvg%3E%3C%2Fsvg%3E");
+  });
+
+  it("draws the QR code to fill the card, with no CSS padding", () => {
+    renderDetails(
+      makeBooking({ status: "CONFIRMED", holdExpiresAt: null }),
+      null,
+      "data:image/svg+xml;utf8,%3Csvg%3E%3C%2Fsvg%3E",
+    );
+    const qr = screen.getByRole("img", {
+      name: "Ticket QR code for booking TIX-7KQ2M9XA",
+    });
+    // The quiet zone is inside the image; padding would only shrink the code
+    expect(qr).toHaveClass("w-full", "bg-white");
+    expect(qr.className).not.toMatch(/\bp-\d/);
+  });
+
+  it("shows the QR code full screen, and closes again", () => {
+    const { container } = renderDetails(
+      makeBooking({ status: "CONFIRMED", holdExpiresAt: null }),
+      null,
+      "data:image/svg+xml;utf8,%3Csvg%3E%3C%2Fsvg%3E",
+    );
+    const qrName = "Ticket QR code for booking TIX-7KQ2M9XA";
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    // The full-screen copy is only drawn while open. (A closed <dialog> is
+    // hidden from role queries, so count the <img> elements themselves.)
+    expect(container.querySelectorAll("img")).toHaveLength(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "Show full screen" }));
+
+    const dialog = screen.getByRole("dialog", { name: "Your ticket" });
+    expect(dialog).toHaveClass("h-dvh", "w-screen");
+    expect(dialog).toHaveTextContent("TIX-7KQ2M9XA");
+    expect(within(dialog).getByRole("img", { name: qrName })).toHaveAttribute(
+      "src",
+      "data:image/svg+xml;utf8,%3Csvg%3E%3C%2Fsvg%3E",
+    );
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    // Back to a single ticket image on the page
+    expect(container.querySelectorAll("img")).toHaveLength(1);
+  });
+
+  it("has no full screen button without a QR code", () => {
+    renderDetails(makeBooking({ status: "CONFIRMED", holdExpiresAt: null }));
+    expect(
+      screen.queryByRole("button", { name: "Show full screen" }),
+    ).not.toBeInTheDocument();
   });
 
   it("still shows the reference when there's no QR code", () => {

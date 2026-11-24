@@ -252,6 +252,13 @@ test.describe("booking pages (logged in as an attendee)", () => {
     await sendPaidWebhook(request, bookingId, secret!);
     await expect(page.getByText("You're going!")).toBeVisible();
     await expectNoAxeViolations(page);
+
+    // The ticket QR code shown full screen, for the door (#71)
+    await page.getByRole("button", { name: "Show full screen" }).click();
+    await expect(
+      page.getByRole("dialog", { name: "Your ticket" }),
+    ).toBeVisible();
+    await expectNoAxeViolations(page);
   });
 
   test("my tickets, empty and with a ticket", async ({ page }) => {
