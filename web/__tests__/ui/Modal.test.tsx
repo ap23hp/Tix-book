@@ -90,6 +90,29 @@ describe("Modal", () => {
   });
 });
 
+describe("Modal sizes", () => {
+  it("is a box in the middle by default", () => {
+    render(
+      <Modal open onClose={() => {}} title="Box">
+        Hello
+      </Modal>,
+    );
+    expect(screen.getByRole("dialog")).toHaveClass("m-auto", "max-w-lg");
+  });
+
+  it("covers the whole screen with fullScreen", () => {
+    render(
+      <Modal open onClose={() => {}} title="Your ticket" fullScreen>
+        Hello
+      </Modal>,
+    );
+    const dialog = screen.getByRole("dialog", { name: "Your ticket" });
+    // max-*-none lifts the browser's own size limit for <dialog>
+    expect(dialog).toHaveClass("h-dvh", "w-screen", "max-h-none", "max-w-none");
+    expect(dialog).not.toHaveClass("max-w-lg");
+  });
+});
+
 describe("Modal on a hidden page (<Activity>)", () => {
   // Next.js hides the page you leave instead of removing it. A dialog
   // opened with showModal() would stay modal while hidden, invisible, and

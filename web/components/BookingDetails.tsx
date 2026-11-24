@@ -7,6 +7,7 @@ import { Countdown } from "@/components/Countdown";
 import { Badge } from "@/components/ui/Badge";
 import { Button, buttonClass } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import { Modal } from "@/components/ui/Modal";
 import { Spinner } from "@/components/ui/Spinner";
 import { useToast } from "@/components/ui/Toast";
 import { BOOKING_STATUS } from "@/lib/booking-status";
@@ -42,6 +43,7 @@ export function BookingDetails({
   const [override, setOverride] = useState<BookingStatus | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const [qrFullScreen, setQrFullScreen] = useState(false);
   const status = override ?? booking.status;
   const { event } = booking;
 
@@ -190,16 +192,45 @@ export function BookingDetails({
             <span className="font-mono">{booking.reference}</span> at the door.
           </p>
           {ticketQr && (
-            // A data URL made on the server, so next/image has nothing to
-            // optimise. White background in dark mode too: scanners need it.
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={ticketQr}
-              alt={`Ticket QR code for booking ${booking.reference}`}
-              width={192}
-              height={192}
-              className="mt-4 rounded-md bg-white p-2"
-            />
+            <>
+              <TicketQr
+                src={ticketQr}
+                reference={booking.reference}
+                className="mx-auto mt-4 max-w-sm"
+              />
+              <div className="mt-4 text-center">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setQrFullScreen(true)}
+                >
+                  Show full screen
+                </Button>
+              </div>
+              <Modal
+                open={qrFullScreen}
+                onClose={() => setQrFullScreen(false)}
+                title="Your ticket"
+                fullScreen
+              >
+                <p className="text-ink-soft">
+                  Reference{" "}
+                  <span className="font-mono text-ink">
+                    {booking.reference}
+                  </span>
+                </p>
+                {/* Only while open: one ticket image for screen readers */}
+                {qrFullScreen && (
+                  // As wide as the screen, but never taller than what's left
+                  // under the title, so it's never cut off on a short screen
+                  <TicketQr
+                    src={ticketQr}
+                    reference={booking.reference}
+                    className="mx-auto mt-3 max-w-[calc(100dvh-9rem)]"
+                  />
+                )}
+              </Modal>
+            </>
           )}
           {event.meetingLink && (
             <p className="mt-3">
@@ -255,6 +286,31 @@ export function BookingDetails({
         </div>
       )}
     </Card>
+  );
+}
+
+// The QR code fills the width it's given. A data URL made on the server, so
+// next/image has nothing to optimise. The white quiet zone is inside the
+// image (lib/ticket-qr.ts), so it's there at every size.
+function TicketQr({
+  src,
+  reference,
+  className,
+}: {
+  src: string;
+  reference: string;
+  className: string;
+}) {
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={src}
+      alt={`Ticket QR code for booking ${reference}`}
+      // The size before CSS applies (no layout jump); CSS makes it fluid
+      width={384}
+      height={384}
+      className={`block aspect-square w-full rounded-md bg-white ${className}`}
+    />
   );
 }
 

@@ -11,14 +11,30 @@ type Props = {
   onClose: () => void;
   title: string;
   children: ReactNode;
+  // Cover the whole screen (e.g. a ticket QR shown at the door) instead of
+  // a box in the middle
+  fullScreen?: boolean;
 };
+
+const BOX =
+  "m-auto w-[calc(100%-2rem)] max-w-lg rounded-ticket shadow-ticket-lift";
+// The browser gives <dialog> a max size a little smaller than the screen:
+// lift it, and use dvh (the height that's really visible on phones, with
+// the address bar showing)
+const FULL_SCREEN = "m-0 h-dvh max-h-none w-screen max-w-none";
 
 // Built on the native <dialog>. showModal() gives us, from the browser:
 // - a focus trap (the rest of the page becomes inert)
 // - Escape to close
 // - focus moved in on open, and back to the opening button on close
 // - the "top layer", so no z-index problems, and a ::backdrop to style
-export function Modal({ open, onClose, title, children }: Props) {
+export function Modal({
+  open,
+  onClose,
+  title,
+  children,
+  fullScreen = false,
+}: Props) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const titleId = useId();
 
@@ -53,9 +69,9 @@ export function Modal({ open, onClose, title, children }: Props) {
       aria-labelledby={titleId}
       onClose={handleClose}
       // Tailwind's reset removes the browser's centring margin, so add m-auto
-      className="m-auto w-[calc(100%-2rem)] max-w-lg rounded-ticket bg-surface text-ink shadow-ticket-lift backdrop:bg-ink/50"
+      className={`${fullScreen ? FULL_SCREEN : BOX} bg-surface text-ink backdrop:bg-ink/50`}
     >
-      <div className="p-6">
+      <div className={fullScreen ? "p-4" : "p-6"}>
         <div className="flex items-start justify-between gap-4">
           <h2 id={titleId} className={`text-display-sm text-ink ${display}`}>
             {title}

@@ -115,6 +115,20 @@ Testing approach, accessibility checks, known issues and things to review.
   other runs; same cause as earlier cold-start notes.
 - Not checked: the migration on production (read-only rule; it runs when the PR is merged).
 
+## Ticket QR size (#71, 24 Nov 2026)
+- Found in a real-phone test: the scanner only read the ticket QR when it was zoomed.
+  Measured: 315-character JWT → QR version 13 (69 × 69), drawn at 176 px (~2.4 px/module).
+- Now (Playwright): 384 px on a laptop, 292 px in the card and 358 px full screen on a
+  390 px phone, with a 4-module quiet zone in the SVG. Decision 057 has the token options.
+- Tests: the quiet zone and version 13 / error correction M (from the SVG's size), full
+  width with no padding, full screen opens and closes, one image only; e2e measures the
+  widths; axe runs on the full-screen dialog.
+- Not tested automatically: a real phone camera reading a real phone screen (glare,
+  brightness, distance). To check by hand (see the PR).
+- Seen while measuring, not changed: the scanner asks the camera for
+  `facingMode: "environment"` only, with no resolution, and many browsers then give
+  640 × 480. Asking for a higher `ideal` resolution would help dense codes.
+
 ## Open questions
 - **Vercel and `?limit=100` (20 Nov 2026), not explained yet.** `GET /api/v1/events?limit=100`
   through the Vercel rewrite (tix-book.vercel.app) returned events, but the same request to
