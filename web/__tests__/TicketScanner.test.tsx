@@ -152,10 +152,16 @@ describe("TicketScanner: typing or pasting a code", () => {
 
 describe("TicketScanner: the camera", () => {
   function fakeCamera() {
-    const track = { stop: jest.fn() };
-    const getUserMedia = jest
-      .fn()
-      .mockResolvedValue({ getTracks: () => [track] });
+    // A phone camera that can't do the 1920 x 1080 we ask for: with "ideal"
+    // constraints it still opens, at the closest size it has
+    const track = {
+      stop: jest.fn(),
+      getSettings: () => ({ width: 1280, height: 720 }),
+    };
+    const getUserMedia = jest.fn().mockResolvedValue({
+      getTracks: () => [track],
+      getVideoTracks: () => [track],
+    });
     Object.defineProperty(navigator, "mediaDevices", {
       value: { getUserMedia },
       configurable: true,
@@ -179,6 +185,7 @@ describe("TicketScanner: the camera", () => {
 
   it("checks a QR code the camera sees, once, and stops the camera on request", async () => {
     const { track, getUserMedia } = fakeCamera();
+    const info = jest.spyOn(console, "info").mockImplementation(() => {});
     mockCreateQrDetector.mockResolvedValue({
       detect: jest.fn().mockResolvedValue([{ rawValue: "jwt-from-qr" }]),
     });
@@ -192,10 +199,19 @@ describe("TicketScanner: the camera", () => {
     fireEvent.click(screen.getByRole("button", { name: "Scan with camera" }));
 
     expect(await screen.findByText("Valid: let them in")).toBeInTheDocument();
+    // The back camera, at a high resolution, as preferences only
     expect(getUserMedia).toHaveBeenCalledWith({
-      video: { facingMode: "environment" },
+      video: {
+        facingMode: "environment",
+        width: { ideal: 1920 },
+        height: { ideal: 1080 },
+      },
       audio: false,
     });
+    // In development, the size the browser really gave is logged
+    expect(info).toHaveBeenCalledWith(
+      "[scanner] camera asked for 1920 × 1080 (ideal), got 1280 × 720",
+    );
     expect(global.fetch).toHaveBeenCalledWith(
       "/api/v1/tickets/verify",
       expect.objectContaining({
