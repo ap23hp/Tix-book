@@ -1173,3 +1173,29 @@ the copy (my new rule after 6b), then checked the working tree was identical. Re
   queueing and sending."
 - "On a free plan that sleeps, I use an external scheduler to wake the server, and I
   sized the schedule against the database's compute budget."
+
+## 2026-11-24 — Phase 6d: a circuit breaker
+
+**Retries vs a breaker:** a retry helps one request. A breaker protects the whole app
+when a provider is down: after 5 failures in a row it stops calling for 60 seconds, then
+lets one trial request through. Closed → open → half-open → closed (or open again).
+
+**Fail fast, but don't lose anything:** while the breaker is open, a send fails at once
+with a retryable error, so the queue simply tries the job again later.
+
+**What counts as "down":** only timeouts, network errors and 5xx/rate limits. A refused
+address means Resend answered, so it doesn't count.
+
+**Testing time without waiting:** the breaker takes a `now()` function, so the tests move
+a fake clock 60 seconds forward instead of sleeping. One test holds a trial request open
+to prove a second request in half-open fails fast.
+
+**Breaking it on purpose** (each file copied first, then checked by checksum): never
+opening, counting every error, letting everyone through in half-open, and making the
+open-circuit error permanent each failed tests.
+
+**Dead letter redrive:** a test dead-letters a job (permanent error), "fixes the cause",
+calls `redrive()`, and the job runs again and completes.
+
+**Interview line:** "Retries handle one failing request; a circuit breaker stops the
+whole app from hammering a provider that's down, and gives it time to recover."
