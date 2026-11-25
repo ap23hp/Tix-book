@@ -3,8 +3,8 @@ import { expect, test } from "@playwright/test";
 import { createEvent, signUp } from "./helpers";
 
 // The door scanner (issue #67) in a real browser, against the real API and
-// the dev database. The camera can't be tested here (no real QR code in
-// front of a real camera), so this pastes what the QR code contains.
+// the dev database. This pastes what the QR code contains; scan-phone.spec.ts
+// scans it with a fake camera that films the QR code.
 
 test("an organiser checks a ticket in at the door, and only once", async ({
   page,

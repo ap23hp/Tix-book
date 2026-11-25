@@ -227,6 +227,81 @@ describe("TicketScanner: the camera", () => {
     expect(screen.queryByLabelText(/^Camera view/)).not.toBeInTheDocument();
   });
 
+  describe("on a phone, where the camera starts below the form (#75)", () => {
+    const scrollIntoView = jest.fn();
+    beforeEach(() => {
+      scrollIntoView.mockClear();
+      Element.prototype.scrollIntoView = scrollIntoView;
+    });
+    afterEach(() => {
+      // jsdom has neither of these; remove the stand-ins
+      delete (Element.prototype as Partial<Element>).scrollIntoView;
+      delete (window as Partial<Window>).matchMedia;
+    });
+
+    function reducedMotion(on: boolean) {
+      window.matchMedia = jest.fn().mockReturnValue({
+        matches: on,
+      }) as unknown as typeof window.matchMedia;
+    }
+
+    function startCamera() {
+      fakeCamera();
+      mockCreateQrDetector.mockResolvedValue({ detect: jest.fn() });
+      renderScanner();
+      const button = screen.getByRole("button", { name: "Scan with camera" });
+      button.focus();
+      fireEvent.click(button);
+      return button;
+    }
+
+    it("scrolls the camera panel to the top of the screen, smoothly", async () => {
+      reducedMotion(false);
+      startCamera();
+      expect(await screen.findByLabelText(/^Camera view/)).toBeInTheDocument();
+      expect(scrollIntoView).toHaveBeenCalledTimes(1);
+      expect(scrollIntoView).toHaveBeenCalledWith({
+        block: "start",
+        behavior: "smooth",
+      });
+      // The panel itself, so the button and the result come with the video
+      expect(scrollIntoView.mock.contexts[0]).toBe(
+        screen.getByRole("region", { name: "Camera scanner" }),
+      );
+    });
+
+    it("jumps without animation for people who reduce motion", async () => {
+      reducedMotion(true);
+      startCamera();
+      expect(await screen.findByLabelText(/^Camera view/)).toBeInTheDocument();
+      expect(scrollIntoView).toHaveBeenCalledWith({
+        block: "start",
+        behavior: "auto",
+      });
+    });
+
+    it("keeps focus on the camera button, now Stop camera", async () => {
+      const button = startCamera();
+      const stop = await screen.findByRole("button", { name: "Stop camera" });
+      // The same element with a new label, so focus never falls to the page
+      expect(stop).toBe(button);
+      expect(stop).toHaveFocus();
+    });
+
+    it("puts the result right after the camera view, in the same panel", async () => {
+      startCamera();
+      const video = await screen.findByLabelText(/^Camera view/);
+      const panel = screen.getByRole("region", { name: "Camera scanner" });
+      const result = screen.getByRole("status", {
+        name: "Ticket check result",
+      });
+      expect(panel).toContainElement(result);
+      expect(video.compareDocumentPosition(result)).toBe(
+        Node.DOCUMENT_POSITION_FOLLOWING,
+      );
+    });
+  });
+
   it("explains a refused camera permission", async () => {
     const { getUserMedia } = fakeCamera();
     getUserMedia.mockRejectedValue(
