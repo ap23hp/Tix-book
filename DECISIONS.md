@@ -1019,3 +1019,32 @@ Not sure: whether phones in portrait give 1080 × 1920 instead (MDN doesn't say)
 the long side is about 1920, which is what matters for squares per pixel.
 Revisit if: scanning feels slow on a phone (try 1280 × 720 ideal), or the re-test still
 needs the QR very close to the camera.
+
+## 059 — Scanner on a phone: camera and result in one panel, scrolled into view
+Date: 2026-11-25
+Problem (#75): on a phone the camera opened below the paste-in form. Measured in Playwright
+at 390 × 844: camera view at 611–953 px (68% on screen), result after a scan at
+985–1113 px (off screen).
+Options:
+- Put the camera first on the page: no scrolling, but the paste-in box (the fallback that
+  always works, and what USB scanners type into) moves down for everyone.
+- Keep the layout, only scroll the video into view: the result was in the other grid
+  column (on desktop) or after it, so it could still end up off screen.
+- (chosen) One **camera panel** holding the camera button, the video and the result, in
+  that order; when the camera starts, `scrollIntoView({ block: "start" })` on the panel.
+  The form stays first. On a laptop: form left, camera panel and result right.
+Scrolling: `behavior: "smooth"`, or `"auto"` (an instant jump) when the user has
+`prefers-reduced-motion: reduce`.
+Focus: not moved. The "Scan with camera" and "Stop camera" buttons are the same element
+(React reuses it, only the label changes), so focus stays on it: a keyboard user can stop
+the camera straight away, and a screen reader isn't sent anywhere. The result keeps its one
+live region (`role="status"`), which is always in the page.
+After: button 268–318, camera 334–676, result 692–820 px, all on an 844 px screen.
+Testing a real camera scan: Chromium's fake camera plays a Y4M video file
+(`--use-file-for-fake-video-capture`), which the test writes from the ticket's QR code
+(`e2e/fake-camera.ts`). So the e2e test goes getUserMedia → video → detector → API.
+Trade-off: on a laptop the page jumps a little when the camera starts. The result card is
+only ~24 px from the bottom of an 844 px screen: a longer message (e.g. a long error) or a
+smaller phone could push it partly off screen.
+Revisit if: a phone shorter than ~740 px clips the result (then make the video smaller on
+short screens, e.g. `max-h-[50dvh]`).
