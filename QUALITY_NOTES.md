@@ -125,9 +125,20 @@ Testing approach, accessibility checks, known issues and things to review.
   widths; axe runs on the full-screen dialog.
 - Not tested automatically: a real phone camera reading a real phone screen (glare,
   brightness, distance). To check by hand (see the PR).
-- Seen while measuring, not changed: the scanner asks the camera for
-  `facingMode: "environment"` only, with no resolution, and many browsers then give
-  640 × 480. Asking for a higher `ideal` resolution would help dense codes.
+- ✅ (#73) The scanner asked the camera for no resolution (Chromium then gave 640 × 480).
+  It now asks for 1920 × 1080 as an ideal (decision 058).
+
+## Scanner camera resolution (#73, 24 Nov 2026)
+- Tests: the constraints are exactly back camera + ideal 1920 × 1080 with no min, max or
+  exact; `getSettings()` read and logged in development only; a fake camera that gives
+  1280 × 720 still opens; the camera still stops on hide.
+- Chromium fake camera: no size → 640 × 480, ideal → 1920 × 1080, impossible `min` →
+  OverconstrainedError, impossible `ideal` → still opens.
+- Not tested: a real phone camera (what size it gives, and whether 1080p detection is
+  fast enough). To check by hand: see the PR.
+- Flaky once again: `scan.spec.ts` failed in 1 of 3 full e2e runs (passed alone and in the
+  next full run). It doesn't use the camera. The error text wasn't kept (my command cut
+  the output), so the cause isn't confirmed; probably the cold-start compile noted above.
 
 ## Open questions
 - **Vercel and `?limit=100` (20 Nov 2026), not explained yet.** `GET /api/v1/events?limit=100`

@@ -1289,3 +1289,27 @@ the full-screen image always drawn each failed a test.
 **Interview line:** "The scanner bug was a pixels-per-module problem: I measured the QR
 version and the drawn size, made it fill the screen with a proper quiet zone, and wrote up
 how to shrink the signed token if that isn't enough."
+
+## 2026-11-24 — Asking the camera for a sharper picture (#73)
+
+**Constraints are requests:** `getUserMedia({ video: {...} })` takes constraints. A plain
+value or `ideal` is a preference: the browser picks the closest setting the camera has.
+`min`, `max` and `exact` are requirements: if no camera can meet them, the call fails with
+`OverconstrainedError` and the user isn't even asked. For a door scanner, "opens with a
+softer picture" beats "doesn't open".
+
+**Check what you really got:** `track.getSettings()` returns the size the browser chose. In
+Chromium's fake camera: 640 × 480 with no size asked, 1920 × 1080 with the ideal.
+
+**Testing without a camera:** Jest fakes `getUserMedia` and the track's `getSettings()`. The
+fake gives 1280 × 720, so the test shows the ideal working: asked 1920 × 1080, got less,
+and the camera still opened. Playwright can launch Chromium with
+`--use-fake-device-for-media-stream` to try real constraint handling.
+
+**Breaking it on purpose** (copied first, checked by checksum): `min` instead of `ideal`,
+`exact` back camera, no resolution, logging in production, no log, and the camera not
+stopped on hide each failed tests.
+
+**Interview line:** "I ask the camera for 1080p as an ideal, not a minimum: min and exact
+are hard requirements that make getUserMedia fail on cameras that can't meet them, and I
+read getSettings() to see what the browser actually gave."

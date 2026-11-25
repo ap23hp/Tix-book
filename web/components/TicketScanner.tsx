@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
+import { logCameraResolution, SCANNER_VIDEO } from "@/lib/camera";
 import { postJson } from "@/lib/client-api";
 import { formatInZone } from "@/lib/format";
 import { createQrDetector, type QrDetector } from "@/lib/qr-detector";
@@ -97,15 +98,16 @@ export function TicketScanner({ eventId, timezone }: Props) {
     setCamera("starting");
     try {
       const [stream, detector] = await Promise.all([
-        // The back camera on phones; any camera elsewhere
+        // The back camera, as sharp as it allows (lib/camera.ts)
         navigator.mediaDevices.getUserMedia({
-          video: { facingMode: "environment" },
+          video: SCANNER_VIDEO,
           audio: false,
         }),
         createQrDetector(),
       ]);
       streamRef.current = stream;
       detectorRef.current = detector;
+      logCameraResolution(stream);
       const video = videoRef.current;
       if (video) {
         video.srcObject = stream;
