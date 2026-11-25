@@ -33,6 +33,7 @@ export function TicketScanner({ eventId, timezone }: Props) {
   const [cameraError, setCameraError] = useState<string | null>(null);
 
   const videoRef = useRef<HTMLVideoElement>(null);
+  const panelRef = useRef<HTMLElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const detectorRef = useRef<QrDetector | null>(null);
   // A ref, not state: the camera loop reads it between renders
@@ -124,6 +125,18 @@ export function TicketScanner({ eventId, timezone }: Props) {
     }
   }
 
+  // When the camera starts, scroll so the camera button, the picture and
+  // the result space are on screen: on a phone they start below the form
+  // (#75). Focus isn't moved: it stays on the same button, now "Stop
+  // camera", so keyboard and screen-reader users aren't sent anywhere.
+  useEffect(() => {
+    if (camera !== "starting") return;
+    panelRef.current?.scrollIntoView?.({
+      block: "start",
+      behavior: prefersReducedMotion() ? "auto" : "smooth",
+    });
+  }, [camera]);
+
   // While the camera is on, look for a QR code a few times a second
   useEffect(() => {
     if (camera !== "on") return;
@@ -190,53 +203,67 @@ export function TicketScanner({ eventId, timezone }: Props) {
             {checking ? "Checking…" : "Check ticket"}
           </Button>
         </form>
-
-        <div className="mt-6">
-          {camera === "off" ? (
-            <Button variant="secondary" onClick={() => void startCamera()}>
-              Scan with camera
-            </Button>
-          ) : (
-            <Button variant="secondary" onClick={stopCamera}>
-              Stop camera
-            </Button>
-          )}
-          {cameraError && (
-            <p role="alert" className="mt-3 text-sm text-ink-soft">
-              {cameraError}
-            </p>
-          )}
-          {camera !== "off" && (
-            // The viewfinder: muted, no sound track, so no captions needed
-            <video
-              ref={videoRef}
-              muted
-              playsInline
-              aria-label="Camera view: hold the ticket's QR code up to it"
-              className="mt-4 aspect-square w-full max-w-sm rounded-lg bg-ink object-cover"
-            />
-          )}
-          {camera === "starting" && (
-            <p className="mt-2 text-sm text-ink-muted">Starting the camera…</p>
-          )}
-        </div>
       </div>
 
-      {/* Always in the page, so screen readers announce each new result */}
-      <div
-        role="status"
-        aria-live="polite"
-        aria-atomic="true"
-        aria-label="Ticket check result"
+      {/* The camera and the result together: on a phone they're on screen
+          at the same time when the camera starts (#75) */}
+      <section
+        ref={panelRef}
+        aria-label="Camera scanner"
+        className="scroll-mt-4"
       >
-        {requestError && (
-          <p className="rounded-lg border border-line bg-surface p-5 text-ink">
-            {requestError}
+        {camera === "off" ? (
+          <Button variant="secondary" onClick={() => void startCamera()}>
+            Scan with camera
+          </Button>
+        ) : (
+          <Button variant="secondary" onClick={stopCamera}>
+            Stop camera
+          </Button>
+        )}
+        {cameraError && (
+          <p role="alert" className="mt-3 text-sm text-ink-soft">
+            {cameraError}
           </p>
         )}
-        {result && <ResultCard result={result} timezone={timezone} />}
-      </div>
+        {camera !== "off" && (
+          // The viewfinder: muted, no sound track, so no captions needed
+          <video
+            ref={videoRef}
+            muted
+            playsInline
+            aria-label="Camera view: hold the ticket's QR code up to it"
+            className="mt-4 aspect-square w-full max-w-sm rounded-lg bg-ink object-cover"
+          />
+        )}
+        {camera === "starting" && (
+          <p className="mt-2 text-sm text-ink-muted">Starting the camera…</p>
+        )}
+
+        {/* Always in the page, so screen readers announce each new result */}
+        <div
+          role="status"
+          aria-live="polite"
+          aria-atomic="true"
+          aria-label="Ticket check result"
+          className="mt-4"
+        >
+          {requestError && (
+            <p className="rounded-lg border border-line bg-surface p-5 text-ink">
+              {requestError}
+            </p>
+          )}
+          {result && <ResultCard result={result} timezone={timezone} />}
+        </div>
+      </section>
     </div>
+  );
+}
+
+// People who turned on "reduce motion" get an instant jump, not an animation
+function prefersReducedMotion(): boolean {
+  return (
+    window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false
   );
 }
 

@@ -1313,3 +1313,33 @@ stopped on hide each failed tests.
 **Interview line:** "I ask the camera for 1080p as an ideal, not a minimum: min and exact
 are hard requirements that make getUserMedia fail on cameras that can't meet them, and I
 read getSettings() to see what the browser actually gave."
+
+## 2026-11-25 — Scanner on a phone: no scrolling at the door (#75)
+
+**Reproduce first, with numbers:** Playwright at 390 × 844 showed the camera view at
+611–953 px (68% visible) and the result at 985–1113 px (not visible). `toBeInViewport()`
+checks how much of an element is on screen.
+
+**scrollIntoView:** `element.scrollIntoView({ block: "start", behavior })` scrolls until the
+element is at the top (`scroll-mt-4` leaves a little gap). I scroll the whole panel, so the
+"Stop camera" button, the video and the result all come into view together.
+
+**Reduced motion:** `matchMedia("(prefers-reduced-motion: reduce)")` tells me the user
+turned off animations in their system settings. Then I jump (`"auto"`) instead of
+animating (`"smooth"`).
+
+**Focus:** moving focus is only helpful when the old place disappears or the user has to act
+somewhere else. Here React keeps the same `<button>` and only changes its label to "Stop
+camera", so focus is already in the right place. A test checks it is the same element.
+
+**A real scan in e2e:** Chromium can use a video file as its camera. A Y4M file is a text
+header plus raw frames; for black and white, the brightness bytes are 0 or 255 and the two
+colour planes are all 128. The test draws the ticket's QR code into one frame.
+
+**Breaking it on purpose** (copied first, checked by checksum): no scroll, ignoring reduced
+motion, scrolling only the video, two separate buttons (focus lost), and the result moved
+above the camera button each failed a unit test; no scroll also failed the phone e2e test.
+
+**Interview line:** "I reproduced the phone bug with Playwright's toBeInViewport at 390 px,
+grouped the camera and result in one panel that scrolls into view, respected reduced
+motion, and kept focus where it was because the button element never changes."

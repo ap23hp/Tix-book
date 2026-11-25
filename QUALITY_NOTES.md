@@ -140,6 +140,18 @@ Testing approach, accessibility checks, known issues and things to review.
   next full run). It doesn't use the camera. The error text wasn't kept (my command cut
   the output), so the cause isn't confirmed; probably the cold-start compile noted above.
 
+## Scanner on a phone (#75, 25 Nov 2026)
+- Reproduced at 390 × 844 before the fix: camera view 611–953 px (68% on screen), result
+  after a scan 985–1113 px (off screen). After: camera 334–676, result 692–820.
+- E2E `scan-phone.spec.ts`: a **real camera scan**. Chromium's fake camera plays a video of
+  the ticket's QR code, and the test checks the camera and the result are fully in the
+  viewport, focus is on "Stop camera", axe passes at phone width with a result showing, and
+  the paste-in box can still be reached.
+- Unit: scroll on start (smooth / instant with reduced motion), the panel is what scrolls,
+  focus stays on the same button, the result comes right after the video in the panel.
+- Not tested: phones shorter than 844 px (the result is ~24 px from the bottom), and real
+  phone browsers (only Chromium).
+
 ## Open questions
 - **Vercel and `?limit=100` (20 Nov 2026), not explained yet.** `GET /api/v1/events?limit=100`
   through the Vercel rewrite (tix-book.vercel.app) returned events, but the same request to
