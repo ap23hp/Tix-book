@@ -1048,3 +1048,198 @@ only ~24 px from the bottom of an 844 px screen: a longer message (e.g. a long e
 smaller phone could push it partly off screen.
 Revisit if: a phone shorter than ~740 px clips the result (then make the video smaller on
 short screens, e.g. `max-h-[50dvh]`).
+
+## 060 — Phase 7: measure before caching
+Date: 2026-11-25
+Before adding a cache, I measured the public event endpoints with a script that only sends
+GETs (`npm run lab:latency -- <base URL>`, `api/src/lab/latency-bench.ts`): 5 warm-up
+requests, then 40 one after another on one kept-alive connection, per endpoint. `/health`
+does no database work, so it shows the network round trip; "endpoint − /health" is roughly
+the API's own time.
+**Production, from my laptop in London (3 runs, 25 Nov, before caching), ms:**
+
+| Endpoint | min | median | p90 |
+|---|---|---|---|
+| `/health` | 41–46 | 80–133 | 133–205 |
+| `/api/v1/events` | 48–52 | 89–111 | 134–179 |
+| `/api/v1/events?q=a` | 51–61 | 103–135 | 140–212 |
+| `/api/v1/events/:id` | 47–52 | 73–146 | 115–419 |
+
+**Local API (laptop → Neon Frankfurt), median ms:** `/health` 1, list 40–41, search 40,
+event 38–39. Each endpoint makes 2 queries, about 19 ms each over the internet.
+What this says: on Render (same region as Neon) the API's own work is only a few ms; the
+network to my laptop and its noise (medians moving 50 ms between runs) are most of the
+time. One request in the first run got a 502 from Render's proxy; the script now counts
+failures instead of stopping.
+The honest expectation: caching should clearly help locally (one query fewer), but on
+production the gain may be a few ms or none, because a cache hit costs Redis round trips
+too. To compare after the PR: the same script, from the same place, a few runs.
+Trade-off: measuring from my laptop measures my Wi-Fi as much as the API. Timing inside the
+API (e.g. a `Server-Timing` header) would be more precise; not added, to keep this PR small.
+
+## 061 — Redis client: `@upstash/redis` (HTTP), not a TCP client
+Date: 2026-11-25 (Upstash pricing page and the SDK's own docs and types, read the same day)
+Options: (1) `@upstash/redis`, Upstash's client over HTTPS (REST)
+         (2) `ioredis` / `node-redis` over TCP (TLS, `rediss://`), which Upstash also offers
+Facts: free plan "250MB data size and 500K commands per month", 10 GB bandwidth a month,
+10,000 commands a second, and "A free account can have 1 database"
+(https://upstash.com/pricing/redis). The pricing FAQ says per-command pricing "applies to
+your REST calls too", and AUTH, PING, HELLO and similar are "not charged". It does not say
+how pipelines or Lua scripts are counted, or what happens on the free plan past 500K.
+Chose: 1.
+Why:
+- No connection to manage. Render's free plan sleeps and wakes; a TCP client must reconnect
+  each time, and while disconnected ioredis queues commands by default, so a request can
+  hang instead of failing. Each HTTP call stands alone and can simply time out.
+- Node's fetch keeps the HTTPS connection alive between calls, so per-command latency
+  should be close to TCP for us (my reasoning, not measured).
+- Settings (from the SDK's types in `node_modules`): its default is **5 retries** with
+  `Math.exp(retryCount) * 50` ms waits, about 12 s in all. Too slow for a cache in front of
+  a page, so `retry: false` and a **500 ms timeout** per request
+  (`signal: () => AbortSignal.timeout(500)`). `automaticDeserialization: false` (we store
+  strings), `enableTelemetry: false` (don't send SDK and platform details).
+- The existing circuit breaker (decision 053) wraps it: 3 failures in a row → Redis isn't
+  called for 30 s, so an outage doesn't cost every request 500 ms.
+- Version 1.41.0 (2 Nov). 1.41.1 came out the day before I installed it; I took the older
+  one on purpose, so a brand-new release has had time to be checked by others.
+Env variables (Upstash's own names, also what `Redis.fromEnv()` reads):
+`UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`. Without them the API uses the
+in-memory store, so a fresh clone still runs. Tests always use memory, even with keys set.
+**One database for dev and production** (the free plan allows one): every key starts with
+`tixbook:<8 hex>:`, a hash of the database host. The dev API and the live API can never read
+each other's cache or counters, with no setting that could be forgotten.
+Trade-off: an HTTP request per call (pipelines help); dev traffic uses the same 500K budget
+as production; and a dev mistake could touch production keys (we never use FLUSHDB or KEYS).
+A paid plan or a second provider would separate them.
+Revisit if: we need pub/sub or blocking commands (TCP only), or measured latency is poor.
+
+## 062 — How many Redis commands we'll use
+Date: 2026-11-25 (an estimate, to check in Upstash's console after a month)
+Commands per request, from the code (each command in a pipeline counted, to be safe):
+- event list or event page: hit 2 (read the version, read the entry), miss 3 (+ save);
+  searches 0 (not cached)
+- create or edit an event: 2 (INCR + PEXPIREAT the version)
+- a request on a limited route: 2 (INCR + PEXPIREAT); login also reads the account wait
+  (1), then on success clears it (1), on failure counts it (2, +1 from the 5th failure)
+Generous traffic for this project (portfolio, plus the phase 9 sessions), per day: 300 event
+reads (≈ 700 commands), 30 logins (≈ 120), 20 seat holds (40), 5 sign-ups (10), a door with
+50 scans (100). About **1,000 a day ≈ 30K a month, ~6% of 500K**.
+The 3-hourly wake-up (decision 052) costs **0**: `/health` never touches Redis, and an HTTP
+client has no connection to open or keep alive (a TCP client's AUTH and PING aren't charged
+either). pg-boss stays on Postgres.
+What could use it up: load tests (500 simulated users × 10 reads ≈ 10K per run, phase 9),
+local e2e runs with real keys (~500 per run), and a flood of requests on limited routes
+(2 each). If the budget ran out, Redis calls would fail and the app falls back (decision
+063: Postgres; decision 064: in-memory limits), so it gets slower, it doesn't stop.
+Revisit if: the console shows more than ~250K in a month.
+
+## 063 — What the event cache holds: event rows, never seats left
+Date: 2026-11-25
+**The problem:** event pages show "seats left". It changes with every booking, but also on
+its own: a 5-minute hold that runs out frees its seats without any write (lazy expiry,
+decision 035). There is nothing to hook an invalidation into.
+Options for seats left:
+(1) cache the whole answer for a short time → after a booking or an expired hold, the page
+    is wrong for up to the TTL
+(2) cache everything, invalidate on every booking change, and cut the TTL to the next
+    hold's end → many places to remember (hold, confirm, late payment, refund, expiry); one
+    missed is a wrong number. And a slow request can write an old count back after an
+    invalidation (see below)
+(3) (chosen) cache only the event rows; add seats left from Postgres on every request
+**So users never see a cached seat number**: seats left is as fresh as without a cache. It
+is still only a snapshot: booking re-counts under the row lock (decision 034) and never
+reads the cache. A test fills the cache with a fake 100-seat copy of a 1-seat event: booking
+2 seats is still refused (409).
+What's cached: `GET /events` without a search (category, format, limit, cursor), and
+`GET /events/:id` for published events, 30 s TTL. Not cached: searches (every typed word is
+a new key, rarely asked again), "not found" (random ids would fill Redis), and anything an
+organiser or attendee sees about their own events or bookings.
+**Invalidation: a version number in every key** (`events:v<N>:...`). Creating or editing an
+event (any PATCH: title, time, publish, back to draft) adds 1 to N after the save, so all
+older keys are never read again and expire by themselves. One command invalidates every list
+variant and every event page.
+- After the save, not before: invalidating first lets a request in between cache the old row.
+- The version is read before the database. A request that loaded the old row while an
+  organiser was saving stores it under the old version, which nobody reads: this "stale set"
+  race can't put an old copy back.
+**Things that change a page without an event write:** seats (never cached) and time. A
+cached list can be up to 30 s old, so events that have started since are dropped on the way
+out (the page may then have one fewer event; the cursor is still right). The seed script
+writes to the dev database directly; its old entries expire within 30 s.
+**Redis down:** a miss (Postgres answers). If the invalidation fails, old copies stay until
+their 30 s TTL (logged).
+Trade-off: every page still runs the seats query, so the cache saves one query of two, and
+the gain on production may be small (decision 060). Two Redis calls per hit (version + entry).
+Revisit if: seats can be cached with a guaranteed update (e.g. a counter row per event
+updated in the booking transaction), or a hit should be one call (keep the version in memory
+for a second).
+
+## 064 — Rate limits per IP, and what happens when Redis is down
+Date: 2026-11-25
+**Limits (per IP, fixed window):** login 10 a minute, sign-up 10 an hour, seat holds 30 a
+minute, ticket checks at the door 120 a minute (2 a second, for a busy door). Over the limit:
+`429` with `Retry-After` (seconds until the window ends) and "Too many attempts. Please wait
+N seconds and try again." The web app already shows the API's message.
+OWASP gives no numbers; it says IP blocking "should not be used as the sole or primary
+defense", because attackers spread requests over many IPs, and IP blocks should be
+temporary. So these are a first layer; login also has a per-account limit (decision 065).
+The numbers leave room for a shared IP (an office, a venue's Wi-Fi).
+**Fixed window:** one counter per window (`...:<window number>`), INCR + PEXPIREAT in one
+pipeline, so the key always expires at the window's end, whatever order they run in.
+Trade-off: up to 2× the limit just around a window boundary. A sliding window is smoother
+but needs more commands.
+IPs and emails are SHA-256 hashed in keys: Redis is another company's server.
+**Which IP:** browser requests arrive Vercel → Render's proxy → Express. Express's
+`trust proxy` (a number of hops, from `TRUST_PROXY_HOPS`) decides which `X-Forwarded-For`
+entry becomes `req.ip`. Vercel's docs say it overwrites `X-Forwarded-For` to prevent
+spoofing and forwards the visitor's IP to an external rewrite; Render's docs don't say what
+its proxy adds. So the number isn't known yet. The API logs, for its first 5 requests after
+starting, how many entries `X-Forwarded-For` has and whether the request came via Vercel
+(counts and yes/no only, no addresses). The value is set from that log. Until it's set, all
+visitors share one count per route.
+Known gap: anyone can call the Render URL directly with their own `X-Forwarded-For`, so the
+per-IP limits can be dodged that way. The per-account login limit doesn't depend on the IP.
+Fix later: Vercel's recommended secret header on the rewrite, checked by the API (needs a
+Vercel and a Render setting).
+**Local requests aren't limited** when the TCP connection itself comes from loopback
+(127.0.0.1 / ::1): the API's tests, local e2e runs, local development. It's the socket
+address, not a header, so it can't be faked from outside. On Render, requests come from
+Render's proxy; the startup log shows `loopback=` to confirm it.
+**Redis down: neither fail-open nor fail-closed.**
+- Fail open (no limits while Redis is down): anyone who can make Redis fail, waits for an
+  outage, or uses up the monthly commands gets unlimited password guesses.
+- Fail closed (refuse everything): Redis being down would stop everyone logging in or
+  booking, because of a feature that exists to protect them.
+- (chosen) **Fall back to in-memory counters** in the process: the limits keep working, per
+  process and reset on restart. With one Render instance that's nearly as good; with several,
+  each would keep its own count (limit × instances). Memory is capped at 10,000 keys (expired
+  first, then the oldest) so a flood can't fill it.
+Revisit if: the API runs more than one instance, or the origin secret header is added.
+
+## 065 — Login: a growing wait per account, never a permanent lockout
+Date: 2026-11-25 (OWASP Authentication, Credential Stuffing and DoS cheat sheets, NIST SP
+800-63B rev 4, read the same day)
+**Rule:** for each email, after **5 failed logins** each next attempt must wait **30 s, then
+1, 2, 4, 8 minutes, at most 15**. During the wait the answer is 429 even for the right
+password, and the password isn't checked. A correct password clears the count. Failures are
+forgotten 24 hours after the last one.
+- Per account, not per IP: OWASP says the failed-login counter should belong to the account,
+  so guesses from many IPs still add up. (The IP limit stops one machine trying many accounts.)
+- **Same answer for unknown emails:** the count is kept for any email, existing or not, and
+  the 429 message is the same as the IP limit's. OWASP says to answer the same way whether or
+  not the account is locked, so a 429 doesn't confirm an account exists.
+- **No permanent lockout:** OWASP's DoS cheat sheet lists user lockout as a way attackers
+  cause denial of service: anyone who knows your email could lock you out for good, and we
+  have no "unlock me" email or admin page. A capped wait still makes guessing slow: after the
+  first few, about 4 guesses an hour, ~100 a day. NIST says no more than 100 failed attempts
+  in a row before disabling the authenticator; we never disable, so in theory slow guessing
+  can go on for weeks. Argon2 (decision 024) and the IP limits slow it further.
+- Keys: `login-fail:<hash of email>` (the count, 24 h) and `login-wait:<hash>` (exists while
+  waiting; its TTL is the Retry-After).
+Known gap: wrong guesses sent at exactly the same moment all pass the check before any is
+counted, so a burst can get a few extra tries. Making it exact needs a Lua script (one atomic
+step); I left it, since the per-IP limit caps bursts from one machine.
+Trade-off: an attacker can keep someone waiting up to 15 minutes at a time (never longer, and
+the owner's correct login clears it). Google login isn't affected.
+Revisit if: we add a password-reset email (then a stronger lock with an unlock link is
+possible), or MFA (OWASP's strongest defence against these attacks).
