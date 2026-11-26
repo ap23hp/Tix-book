@@ -197,6 +197,16 @@ Testing approach, accessibility checks, known issues and things to review.
   `--runInBand` once (07:48:08): 209/209 each time. Before the fix, 2 parallel runs out of 2
   failed 4 tests each.
 
+## Per-user limits for holds and ticket checks (#85, 26 Nov 2026)
+- Tests: two users on one IP don't share the hold limit; one user is limited across IPs;
+  anonymous holds and a made-up cookie get 401 and are never counted (a logged-in user on the
+  same IP still has the whole limit); ticket checks 120 per user, another organiser on the same
+  IP unaffected; attendees counted before the 403. The per-IP login and sign-up tests still pass.
+- Breaking on purpose (`limitByUser` counting by IP again) failed 4 tests.
+- The two ticket-check tests make 120 logged-in requests (a session lookup each, remote dev
+  database), so they have a 30 s timeout instead of Jest's 5 s.
+- Not tested automatically: the limits in production (the 26 Nov test covered login only).
+
 ## Open questions
 - **`[proxy]` lines missing on Render (26 Nov 2026), cause not found** (decision 066).
   Also not explained: Render stayed awake from 06:05:39 to 06:22:01 UTC with no wake-api run.
