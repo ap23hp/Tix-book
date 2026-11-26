@@ -1476,3 +1476,17 @@ every 5 seconds (workers looking for jobs, plus its own housekeeping). Neon only
 
 **Interview line:** "When I can't fix a limitation within the budget, I document it and add a
 log line, so a silent failure becomes something I can measure."
+
+## A connection pool should fail fast (#87, 26 Nov 2026)
+
+**What a pool is:** a few database connections kept open and shared by requests, because
+opening a new connection for every query is slow.
+
+**What I found:** with Prisma 7, the pool is pg's own. We never set it, so it was 10
+connections and, when all 10 were busy, a request waited forever (`connectionTimeoutMillis: 0`).
+
+**The change:** `max: 5` and `connectionTimeoutMillis: 5000` in `prisma.ts`. The test fills a
+1-connection pool and checks the next request gets a timeout error quickly, not a hang.
+
+**Interview line:** "A pool caps how many connections one process opens; it should fail fast
+when it's full, not queue forever."

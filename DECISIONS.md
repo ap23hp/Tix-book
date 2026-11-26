@@ -1422,3 +1422,24 @@ Sources: https://docs.github.com/en/actions/reference/workflows-and-actions/even
 https://docs.github.com/en/billing/concepts/product-billing/github-actions ,
 https://render.com/docs/free , https://neon.com/docs/introduction/plans ,
 https://pgboss.io/api/constructor
+
+## 070 — Prisma's pool: 5 connections, and fail after 5 s when it's full
+Date: 2026-11-26 (issue #87)
+**Problem:** `prisma.ts` passed only `connectionString`, so pg's pool defaults applied: up to
+10 connections and `connectionTimeoutMillis: 0`, which means a request waits forever when
+all are busy. Prisma 7 takes pool settings from the driver adapter, not `connection_limit`
+in the URL. Neon's 0.25 CU compute allows 112 connections, 7 reserved for Neon.
+**Options:**
+(1) keep pg's defaults and write them down: no change, but a full pool hangs requests
+(2) (chosen) **set them:** `max: 5, connectionTimeoutMillis: 5000` on `PrismaPg`
+(3) Neon's pooler (PgBouncer, transaction mode) for Prisma: needs a new `DATABASE_URL` in
+Render, a direct URL for `prisma migrate`, and pg-boss kept on a direct connection. Worth it
+with many instances or serverless functions, not one API
+**Why:** one instance doesn't need 10; with pg-boss's 3 that's at most 8 connections. A
+full pool now gives an error after 5 s (a 500 in the logs) instead of a hanging request.
+**Trade-off:** under a burst, requests queue for one of 5 connections; more than 5 s of
+queueing fails instead of finishing slowly. The full test suite, including the locking
+tests, still passes with 5.
+Revisit if: we run more than one API instance (then option 3), or logs show pool timeouts.
+Sources: https://neon.com/docs/connect/connection-pooling , https://neon.com/docs/manage/endpoints ,
+https://www.prisma.io/docs/orm/v6/prisma-client/setup-and-configuration/databases-connections/connection-pool

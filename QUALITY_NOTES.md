@@ -237,6 +237,12 @@ Testing approach, accessibility checks, known issues and things to review.
 - Not checked from here: that Render really uses Upstash (the startup line
   `[redis] cache and rate limits use:` in Render's logs says which store).
 
+## Prisma pool (#87, 26 Nov 2026)
+- Test: the options (5, 5000 ms); a real query still works; a full 1-connection pool with the
+  same options rejects with a timeout in under 2 s. Breaking on purpose (timeout 0) failed 2
+  tests. Full `npm test` with the new pool: 221/221, locking tests included.
+- Not tested: a real burst on Render.
+
 ## Open questions
 - **`[proxy]` lines missing on Render (26 Nov 2026), cause not found** (decision 066).
   Also not explained: Render stayed awake from 06:05:39 to 06:22:01 UTC with no wake-api run.
