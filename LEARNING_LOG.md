@@ -1490,3 +1490,28 @@ connections and, when all 10 were busy, a request waited forever (`connectionTim
 
 **Interview line:** "A pool caps how many connections one process opens; it should fail fast
 when it's full, not queue forever."
+
+## Indexes, EXPLAIN ANALYZE and counting queries (#89, 26 Nov 2026)
+
+**Why seed data first:** with a few rows, Postgres reads the whole table because that's
+cheapest, whatever indexes exist. So I seeded the dev branch with 20,000 events and 100,000
+bookings (`npm run lab:seed`, dev only: the host must match `SEED_ALLOWED_HOST`).
+
+**Reading a plan:** `Seq Scan` = read every row, then filter. `Index Scan` = jump straight
+to the matching rows, already in order. `Buffers: shared hit=3031` = how many 8 KB pages
+Postgres touched. `EXPLAIN ANALYZE` really runs the query, so only SELECTs.
+
+**Result:** every list query went from a Seq Scan (2.5 to 12.5 ms) to an index (0.04 to
+0.17 ms), touching 15 to 102 pages instead of 1,019 or 3,031.
+
+**Column order:** put the columns you compare with `=` first, then the one you sort or range
+on. `(status, startsAt, id)` serves `status = PUBLISHED AND startsAt > now ORDER BY startsAt, id`
+straight from the index, with no sort.
+
+**N+1:** a page that runs one query for the list and then one more per row. Prisma's
+`include` doesn't do that: it fetches all the related rows in one `IN (...)` query. The test
+counts SQL queries for 1 row and for 10 and expects the same number.
+
+**Interview line:** "An index is a sorted copy of some columns that lets Postgres jump to the
+rows it needs; I check with EXPLAIN ANALYZE on realistic data, and I test for N+1 by counting
+queries for 1 row and for many."

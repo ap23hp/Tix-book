@@ -17,7 +17,9 @@
     "lab:locking": "tsx src/lab/locking-bench.ts",
     "email:test": "tsx src/scripts/email-test.ts",
     "lab:latency": "tsx src/lab/latency-bench.ts",
-    "lab:redis": "tsx src/lab/redis-check.ts"
+    "lab:redis": "tsx src/lab/redis-check.ts",
+    "lab:seed": "tsx src/lab/perf-seed.ts",
+    "lab:explain": "tsx src/lab/explain.ts"
   },
   "keywords": [],
   "author": "",
