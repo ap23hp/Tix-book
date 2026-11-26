@@ -1,0 +1,72 @@
+Rows: 20008 events, 100003 bookings; 7 runs each
+
+=== Public list (first page) (GET /events)
+Limit  (cost=1537.93..1537.96 rows=13 width=429) (actual time=3.093..3.096 rows=13.00 loops=1)
+  Buffers: shared hit=1019
+  ->  Sort  (cost=1537.93..1561.20 rows=9310 width=429) (actual time=3.092..3.093 rows=13.00 loops=1)
+        Sort Key: "startsAt", id
+        Sort Method: top-N heapsort  Memory: 36kB
+        Buffers: shared hit=1019
+        ->  Seq Scan on "Event"  (cost=0.00..1319.12 rows=9310 width=429) (actual time=0.010..2.264 rows=9231.00 loops=1)
+              Filter: (("startsAt" > '2026-11-26 12:54:05.024'::timestamp without time zone) AND (status = 'PUBLISHED'::"EventStatus"))
+              Rows Removed by Filter: 10777
+              Buffers: shared hit=1019
+
+=== My events (organiser) (GET /events/mine)
+Limit  (cost=1279.49..1279.52 rows=13 width=429) (actual time=2.456..2.459 rows=13.00 loops=1)
+  Buffers: shared hit=1019
+  ->  Sort  (cost=1279.49..1280.59 rows=442 width=429) (actual time=2.455..2.456 rows=13.00 loops=1)
+        Sort Key: "startsAt" DESC, id DESC
+        Sort Method: top-N heapsort  Memory: 35kB
+        Buffers: shared hit=1019
+        ->  Seq Scan on "Event"  (cost=0.00..1269.10 rows=442 width=429) (actual time=0.028..2.398 rows=442.00 loops=1)
+              Filter: ("organiserId" = 'e463ba53-7d33-4baa-a1de-c58891b2f709'::text)
+              Rows Removed by Filter: 19566
+              Buffers: shared hit=1019
+
+=== My tickets (GET /bookings/mine)
+Limit  (cost=4283.68..4283.81 rows=50 width=274) (actual time=8.241..8.251 rows=50.00 loops=1)
+  Buffers: shared hit=3031
+  ->  Sort  (cost=4283.68..4283.89 rows=83 width=274) (actual time=8.240..8.246 rows=50.00 loops=1)
+        Sort Key: "createdAt" DESC, id DESC
+        Sort Method: quicksort  Memory: 44kB
+        Buffers: shared hit=3031
+        ->  Seq Scan on "Booking"  (cost=0.00..4281.04 rows=83 width=274) (actual time=0.030..8.222 rows=75.00 loops=1)
+              Filter: ("userId" = '0abfcfc8-c92f-48fa-910c-3defe6e788c2'::text)
+              Rows Removed by Filter: 99928
+              Buffers: shared hit=3031
+
+=== Seats taken, one page (seatsTakenByEvent)
+GroupAggregate  (cost=5282.51..5283.38 rows=50 width=45) (actual time=12.438..12.447 rows=12.00 loops=1)
+  Group Key: "eventId"
+  Buffers: shared hit=3031
+  ->  Sort  (cost=5282.51..5282.63 rows=50 width=41) (actual time=12.430..12.432 rows=51.00 loops=1)
+        Sort Key: "eventId"
+        Sort Method: quicksort  Memory: 28kB
+        Buffers: shared hit=3031
+        ->  Seq Scan on "Booking"  (cost=0.03..5281.10 rows=50 width=41) (actual time=0.028..12.409 rows=51.00 loops=1)
+              Filter: (("eventId" = ANY ('{370fad36-a4e4-4992-903c-cbc7402f0bc8,34805507-5a0f-44a8-8920-eca8fa010ff6,a9d2f2c3-c7f8-449a-b41d-350033cfeb84,61beaacf-79e3-4df4-9d1f-3da0549ae31e,0fac23cc-929c-4a67-b8fc-bd80a2593f14,98b83e01-96ed-451f-8ab8-df0cd6993bde,31829b3c-6b95-4b05-ba4a-4348474677da,357f06fa-71d1-4e42-b3e3-ad50eb2f4d06,92b247b9-3164-4331-83d7-1733b0fcf7a2,c0575307-6608-4c74-ac39-63c5e4e1bdaf,e20ac748-b662-435d-b1c2-a92884b525ef,3f87cbea-e64b-4f49-9f16-44d7e62b2434}'::text[])) AND ((status = 'CONFIRMED'::"BookingStatus") OR ((status = 'HELD'::"BookingStatus") AND (("holdExpiresAt" IS NULL) OR ("holdExpiresAt" > '2026-11-26 12:54:05.024'::timestamp without time zone)))))
+              Rows Removed by Filter: 99952
+              Buffers: shared hit=3031
+
+=== Organiser bookings (GET /events/mine/:id/bookings)
+Limit  (cost=4281.10..4281.11 rows=5 width=274) (actual time=8.473..8.477 rows=16.00 loops=1)
+  Buffers: shared hit=3031
+  ->  Sort  (cost=4281.10..4281.11 rows=5 width=274) (actual time=8.471..8.473 rows=16.00 loops=1)
+        Sort Key: "createdAt" DESC, id DESC
+        Sort Method: quicksort  Memory: 29kB
+        Buffers: shared hit=3031
+        ->  Seq Scan on "Booking"  (cost=0.00..4281.04 rows=5 width=274) (actual time=0.767..8.462 rows=16.00 loops=1)
+              Filter: ("eventId" = '7e90def3-6355-4b5f-99dc-c893a3319f40'::text)
+              Rows Removed by Filter: 99987
+              Buffers: shared hit=3031
+
+┌─────────┬────────────────────────────┬───────────┬────────┬─────────────────────────────────────────────────┐
+│ (index) │ query                      │ median ms │ min ms │ plan                                            │
+├─────────┼────────────────────────────┼───────────┼────────┼─────────────────────────────────────────────────┤
+│ 0       │ 'Public list (first page)' │ 3.105     │ 3.07   │ 'Limit → Sort → Seq Scan on "Event"'            │
+│ 1       │ 'My events (organiser)'    │ 2.467     │ 2.389  │ 'Limit → Sort → Seq Scan on "Event"'            │
+│ 2       │ 'My tickets'               │ 8.276     │ 8.17   │ 'Limit → Sort → Seq Scan on "Booking"'          │
+│ 3       │ 'Seats taken, one page'    │ 12.477    │ 12.153 │ 'GroupAggregate → Sort → Seq Scan on "Booking"' │
+│ 4       │ 'Organiser bookings'       │ 8.498     │ 8.406  │ 'Limit → Sort → Seq Scan on "Booking"'          │
+└─────────┴────────────────────────────┴───────────┴────────┴─────────────────────────────────────────────────┘
