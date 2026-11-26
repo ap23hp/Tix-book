@@ -1443,3 +1443,46 @@ tests, still passes with 5.
 Revisit if: we run more than one API instance (then option 3), or logs show pool timeouts.
 Sources: https://neon.com/docs/connect/connection-pooling , https://neon.com/docs/manage/endpoints ,
 https://www.prisma.io/docs/orm/v6/prisma-client/setup-and-configuration/databases-connections/connection-pool
+
+## 071 — Indexes for the list pages, measured with EXPLAIN ANALYZE
+Date: 2026-11-26 (issue #89)
+**Problem:** apart from unique columns and `Session(userId)`, nothing was indexed. Postgres
+doesn't index foreign keys on its own, so every list page read the whole Event or Booking
+table and sorted it. With a few dozen rows that's free; it grows with every booking.
+**Measured:** on the dev branch with seeded data (`npm run lab:seed`: 20,000 events, 100,000
+bookings, 2,050 users, `faker.seed(42)`), `npm run lab:explain` runs each query 7 times
+with `EXPLAIN (ANALYZE, BUFFERS)` (Postgres's own time, no network). Raw output:
+`docs/perf/explain-before.txt`, `docs/perf/explain-after.txt`.
+
+| Query (route) | Before: plan | Before: median ms | After: plan | After: median ms | Buffers before → after |
+|---|---|---|---|---|---|
+| Public list (`GET /events`) | Seq Scan + top-N sort | 3.11 | Index Scan `Event_status_startsAt_id_idx` | 0.039 | 1019 → 15 |
+| My events (`GET /events/mine`) | Seq Scan + sort | 2.47 | Index Scan Backward `Event_organiserId_startsAt_idx` | 0.048 | 1019 → 17 |
+| My tickets (`GET /bookings/mine`) | Seq Scan + sort | 8.28 | Index Scan Backward `Booking_userId_createdAt_idx` | 0.114 | 3031 → 54 |
+| Seats taken, 12 events (`seatsTakenByEvent`) | Seq Scan + group | 12.48 | Bitmap Index Scan `Booking_eventId_status_idx` | 0.174 | 3031 → 102 |
+| Organiser bookings (`/mine/:id/bookings`) | Seq Scan + sort | 8.50 | Bitmap Index Scan `Booking_eventId_status_idx` | 0.070 | 3031 → 19 |
+
+**Chosen indexes** (equality columns first, then the column we sort or range on):
+- `Event(status, startsAt, id)`: public list (`status = PUBLISHED`, `startsAt > now`,
+  `ORDER BY startsAt, id`); `id` makes the keyset cursor fully ordered by the index
+- `Event(organiserId, startsAt)`: "My events", read backwards for `DESC`
+- `Booking(userId, createdAt)`: "My tickets", and `expireHolds` for one user
+- `Booking(eventId, status)`: seats taken (also inside the booking transaction) and the
+  organiser dashboard
+**Options considered:** (1) no indexes until it's slow: cheap now, but plans change
+silently as data grows; (2) one index per foreign key only (`userId`, `eventId`,
+`organiserId`): helps the filters but still sorts every matching row; (3) (chosen)
+composite indexes shaped like each query's WHERE + ORDER BY.
+**Trade-off:** every insert or update of a booking or event now also updates 2 indexes
+(slightly slower writes, more storage). Fine for a read-heavy site. Not covered: search
+(`title ILIKE '%q%'`) can't use a b-tree index; a `pg_trgm` index would be the next step if
+search gets slow. `CREATE INDEX` (not `CONCURRENTLY`) blocks writes to the table while it
+builds: milliseconds on today's production tables, but at scale I'd build indexes
+`CONCURRENTLY` in a migration of its own.
+**N+1 check:** none found. `query-count.test.ts` counts the SQL queries of one request (Prisma
+emits a query event in tests only) for 1 row and for 10: My tickets, My events, the
+organiser dashboard and public search make the same number either way (`include` and the
+seat `groupBy` are one query each for the whole page). A deliberate N+1 (one event lookup
+per booking) turned 6 queries into 15 and failed the test.
+Revisit if: a slow query shows up in production, search gets slow (trigram index), or
+writes become the bottleneck.

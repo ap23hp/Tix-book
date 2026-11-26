@@ -243,6 +243,19 @@ Testing approach, accessibility checks, known issues and things to review.
   tests. Full `npm test` with the new pool: 221/221, locking tests included.
 - Not tested: a real burst on Render.
 
+## Indexes and N+1 (#89, 26 Nov 2026)
+- EXPLAIN ANALYZE before/after on seeded dev data: decision 071 (table) and
+  `docs/perf/explain-*.txt`. Each plan changed from Seq Scan to the new index.
+- Seed guard: refuses when the host doesn't match `SEED_ALLOWED_HOST`, and when `RENDER` is
+  set (both tried). It refuses to seed twice; `--clean` deletes only `perf-seed-` users and
+  their events and bookings.
+- `query-count.test.ts`: 1 row vs 10 rows give the same SQL query count for My tickets, My
+  events, the organiser dashboard and public search. Breaking on purpose (a lookup per
+  booking in `/bookings/mine`): 6 → 15 queries, test failed.
+- Full `npm test` with the seed data in dev: 225/225.
+- Not measured: production (tiny tables there, and no writes allowed); search (`ILIKE`)
+  isn't helped by these indexes.
+
 ## Open questions
 - **`[proxy]` lines missing on Render (26 Nov 2026), cause not found** (decision 066).
   Also not explained: Render stayed awake from 06:05:39 to 06:22:01 UTC with no wake-api run.
