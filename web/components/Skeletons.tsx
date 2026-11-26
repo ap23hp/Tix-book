@@ -3,19 +3,38 @@ const shimmer = "shimmer animate-shimmer motion-reduce:animate-none";
 
 export function EventListSkeleton() {
   return (
-    <div aria-busy="true" className="mt-10">
+    // Same shape as the real page (filters, then two rows of cards), so the
+    // page doesn't grow when the list arrives. With only one short row, the
+    // footer started on screen and jumped down when the events streamed in:
+    // a layout shift (CLS 0.05 on desktop, decision 072).
+    <div aria-busy="true">
       <p role="status" className="sr-only">
         Loading events…
       </p>
-      <div className="flex items-end justify-between border-b-2 border-line pb-2">
+      <FiltersSkeleton />
+      <div className="mt-10 flex items-end justify-between border-b-2 border-line pb-2">
         <div className={`h-7 w-48 rounded-sm ${shimmer}`} />
         <div className="h-3 w-16 rounded-sm bg-skeleton" />
       </div>
       <div className="mt-6 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-        {[0, 1, 2].map((i) => (
+        {[0, 1, 2, 3, 4, 5].map((i) => (
           <CardSkeleton key={i} />
         ))}
       </div>
+    </div>
+  );
+}
+
+// The search, category and format fields (EventFilters) take this space
+function FiltersSkeleton() {
+  return (
+    <div className="mt-8 grid gap-4 sm:grid-cols-[1fr_auto_auto_auto] sm:items-end">
+      {["w-full", "w-full sm:w-40", "w-full sm:w-40"].map((width, i) => (
+        <div key={i} className={`flex flex-col gap-1.5 ${width}`}>
+          <div className="h-5 w-24 rounded-sm bg-skeleton" />
+          <div className="h-12.5 rounded-lg bg-skeleton" />
+        </div>
+      ))}
     </div>
   );
 }
