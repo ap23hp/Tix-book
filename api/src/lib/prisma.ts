@@ -22,4 +22,13 @@ export function poolConfig(connectionString: string | undefined): PoolConfig {
 
 const adapter = new PrismaPg(poolConfig(process.env.DATABASE_URL));
 
-export const prisma = new PrismaClient({ adapter });
+// In tests only, Prisma reports every SQL query as an event, so a test can
+// count the queries one request makes (the N+1 check, decision 071).
+// Elsewhere nothing is emitted: no cost, and no SQL in production logs.
+export const prisma = new PrismaClient({
+  adapter,
+  log:
+    process.env.NODE_ENV === "test"
+      ? [{ emit: "event" as const, level: "query" as const }]
+      : [],
+});

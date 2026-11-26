@@ -49,7 +49,7 @@ API (`api/`):
   `npx prisma migrate dev --config prisma7.config.ts`, then
   `npx prisma generate --config prisma7.config.ts`
 - Tests hit the **dev** database. Test data uses email prefixes (`auth-test-`,
-  `events-test-`, `google-test-`, `ratelimit-test-`, `cache-test-`) and is deleted in
+  `events-test-`, `google-test-`, `ratelimit-test-`, `cache-test-`, `querycount-test-`) and is deleted in
   `afterAll`. A file's prefix must not be the start of another file's
   (`test-prefixes.test.ts` checks this).
 
