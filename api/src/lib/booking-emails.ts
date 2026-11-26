@@ -72,6 +72,17 @@ export function reminderTime(startsAt: Date): Date {
   return new Date(startsAt.getTime() - REMINDER_HOURS_BEFORE * 60 * 60_000);
 }
 
+// Render's free plan sleeps, so a reminder that comes due then waits for
+// the next wake-up (decision 069). Later than this counts as "late" in the
+// logs: a normal poll is seconds, so 15 minutes means the API was asleep.
+export const LATE_AFTER_MS = 15 * 60_000;
+
+// 7_500_000 ms → "2h 5m" (whole minutes, rounded down)
+export function formatDelay(ms: number): string {
+  const minutes = Math.floor(ms / 60_000);
+  return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
+}
+
 export type ReminderOutcome =
   | SendOutcome
   | {
@@ -87,9 +98,12 @@ export type ReminderOutcome =
 
 // Everything is checked when the job runs, not when it was queued (days
 // earlier): the booking may have been refunded, the event cancelled or moved.
+// `log` is a parameter so tests can read the lines. They never hold an
+// email address: only the idempotency key (booking id + start time).
 export async function sendEventReminderEmail(
   bookingId: string,
   now: Date = new Date(),
+  log: (line: string) => void = (line) => console.log(line),
 ): Promise<ReminderOutcome> {
   const booking = await prisma.booking.findUnique({
     where: { id: bookingId },
@@ -116,10 +130,16 @@ export async function sendEventReminderEmail(
   if (event.status !== "PUBLISHED") {
     return { status: "skipped", reason: "event not published" };
   }
-  if (event.startsAt <= now)
-    return { status: "skipped", reason: "event started" };
-
   const remindAt = reminderTime(event.startsAt);
+  const key = `event-reminder/${booking.id}/${event.startsAt.getTime()}`;
+
+  // Too late to be useful: usually the API slept through the whole day
+  // before the event. Logged, because otherwise nobody would know.
+  if (event.startsAt <= now) {
+    log(`[jobs] reminder missed: event already started (${key})`);
+    return { status: "skipped", reason: "event started" };
+  }
+
   if (remindAt.getTime() > now.getTime() + EARLY_TOLERANCE_MS) {
     return { status: "too early", remindAt };
   }
@@ -138,11 +158,17 @@ export async function sendEventReminderEmail(
     },
     webUrl(),
   );
-  return sendEmail({
+  const outcome = await sendEmail({
     to: booking.user.email,
     ...content,
     // One reminder per booking AND start time: a retry can't send twice,
     // but if the event moves, the new date gets its own reminder
-    idempotencyKey: `event-reminder/${booking.id}/${event.startsAt.getTime()}`,
+    idempotencyKey: key,
   });
+  // Only when it really went out: a sandbox skip wasn't "sent" at all
+  const lateBy = now.getTime() - remindAt.getTime();
+  if (outcome.status === "sent" && lateBy > LATE_AFTER_MS) {
+    log(`[jobs] reminder sent late by ${formatDelay(lateBy)} (${key})`);
+  }
+  return outcome;
 }

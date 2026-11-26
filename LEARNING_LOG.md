@@ -1451,3 +1451,42 @@ read.
 
 **Interview line:** "I key a rate limit on the most reliable identity I have: the user id when
 there's a session, the IP only before login, because behind a proxy many people share one IP."
+
+## Known limitations, made visible: late and missed reminders (#87, 26 Nov 2026)
+
+**The problem:** the API sleeps on Render's free plan, and GitHub's scheduled wake-up ran only
+about 4 times in 13 slots. A reminder that comes due while the API sleeps waits in pg-boss's
+table and goes out on the next wake-up. If the event has started by then, it's skipped. Before
+this change, neither case left any trace.
+
+**The choice:** don't fight the free plan (no new accounts, no money). Call it a known
+limitation in the README and log it, so I can see how often it happens.
+
+**The two lines:** `[jobs] reminder sent late by Xh Ym` (more than 15 minutes after the
+reminder time) and `[jobs] reminder missed: event already started`. They hold the
+idempotency key (booking id + start time), never an email address.
+
+**Testing with a fake clock:** `sendEventReminderEmail` already took `now` as a parameter, so
+a test can say "it is now 2 hours 5 minutes after the reminder time" without waiting. It now
+also takes `log`, so the test collects the lines in an array instead of reading the console.
+
+**Why pg-boss keeps Neon awake:** while the API runs, pg-boss asks Postgres something about
+every 5 seconds (workers looking for jobs, plus its own housekeeping). Neon only sleeps after
+5 idle minutes, so it stays awake as long as Render does.
+
+**Interview line:** "When I can't fix a limitation within the budget, I document it and add a
+log line, so a silent failure becomes something I can measure."
+
+## A connection pool should fail fast (#87, 26 Nov 2026)
+
+**What a pool is:** a few database connections kept open and shared by requests, because
+opening a new connection for every query is slow.
+
+**What I found:** with Prisma 7, the pool is pg's own. We never set it, so it was 10
+connections and, when all 10 were busy, a request waited forever (`connectionTimeoutMillis: 0`).
+
+**The change:** `max: 5` and `connectionTimeoutMillis: 5000` in `prisma.ts`. The test fills a
+1-connection pool and checks the next request gets a timeout error quickly, not a hang.
+
+**Interview line:** "A pool caps how many connections one process opens; it should fail fast
+when it's full, not queue forever."

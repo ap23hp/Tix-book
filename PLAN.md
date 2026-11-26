@@ -238,6 +238,10 @@ Tasks
 - [ ] Health check endpoint
 - [ ] Structured logging
 - [ ] Sentry for errors, UptimeRobot for uptime, alerts
+  - UptimeRobot must point at a **Vercel-only URL** (a page that never calls the API),
+    never the API's `/health`: a check every 5 minutes would keep Render awake 24/7 (~720 of
+    the workspace's 750 free hours) and Neon awake 24/7 (~180 CU-hours, over the free 100,
+    which suspends the database). Decision 069.
 - [ ] Feature flag for one feature
 - [ ] Practise a rollback
 - [ ] Semantic versioning and a CHANGELOG

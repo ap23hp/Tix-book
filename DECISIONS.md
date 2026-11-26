@@ -1377,3 +1377,69 @@ sign-up, and direct callers still can't fake theirs.
 Revisit if: login or sign-up are hit by the shared Vercel limit (real users get 429), or
 holds or ticket checks move to a Server Action (the session cookie is forwarded, so per user
 still works).
+
+## 069 — Reminders while the API sleeps: a known limitation, made visible with logs
+Date: 2026-11-26 (issue #87)
+**Problem:** `wake-api.yml` (decision 052) is set for every 3 hours, but from 24 Nov 15:25 to
+26 Nov 08:30 UTC only 4 of about 13 slots ran (25 Nov 02:22, 12:45, 23:36; 26 Nov 08:09),
+each 0.5 to 2.3 hours late, about 10 hours apart. All 4 succeeded; nothing was cancelled.
+GitHub's docs say scheduled runs can be delayed under load and "some queued jobs may be
+dropped". A due reminder waits in pg-boss's table (kept 14 days after `startAfter`) and is
+sent on the next wake-up; if the event has started by then, it is skipped. Neither case was
+logged.
+**What a wake-up costs:** while the API is awake, pg-boss queries Postgres about 40 times a
+minute, never more than 5 s apart (2 workers every 5 s, the flow check every 5 s, a
+heartbeat every 30 s, supervise / queue cache / bam every 60 s; pg-boss 12.39.0 defaults
+and our `jobs.ts`). Neon scales to zero only after 5 minutes idle, so it stays awake as
+long as Render does, plus 5 minutes.
+**Options:**
+(1) hourly schedule at an off-peak minute, with a first step that skips the call if a run
+succeeded in the last 150 minutes: free, but more moving parts (`actions: read`
+permission, `gh run list` in the workflow) for a demo app, and still best-effort
+(2) cron-job.org: precise to the minute, free, but needs a new account
+(3) UptimeRobot every 5 minutes: needs a new account, and keeps Render and Neon awake
+24/7 (~720 of 750 Render hours; ~180 CU-hours, over Neon's free 100)
+(4) a paid always-on instance: fixes it properly, but costs money
+(5) (chosen) **keep the 3-hour schedule, call it a known limitation, and log it:**
+`[jobs] reminder sent late by Xh Ym` when sent more than 15 minutes after the reminder
+time, and `[jobs] reminder missed: event already started` when skipped for that reason
+**Why:** no money and no new accounts; the cost stays at my decision 052 estimate (about 8
+wake-ups a day: ~65 Render hours and ~21 Neon CU-hours a month, before real traffic and dev
+use). The logs turn a silent failure into a number I can see, and the README says it
+honestly.
+**Details:** 15 minutes, because a normal poll is seconds, so later means the API was
+asleep. "Sent late" is logged only when the email really went out (in Resend's sandbox
+most reminders are skipped, so this line will be rare until there's a domain). The lines
+hold the idempotency key (booking id + start time), like the `[email]` lines, never an
+address.
+**Trade-off:** reminders arrive between about 14 and 24 hours before the event instead of
+24, and a reminder can be missed if no wake-up happens in the 24 hours before the event.
+**Phase 8:** an UptimeRobot monitor must point at a Vercel-only URL, never the API's
+`/health`, for the cost reason in option 3.
+Revisit if: missed lines appear in the logs, real users depend on reminders, or the API
+moves to an always-on plan (then delete `wake-api.yml`).
+Sources: https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule ,
+https://docs.github.com/en/billing/concepts/product-billing/github-actions ,
+https://render.com/docs/free , https://neon.com/docs/introduction/plans ,
+https://pgboss.io/api/constructor
+
+## 070 — Prisma's pool: 5 connections, and fail after 5 s when it's full
+Date: 2026-11-26 (issue #87)
+**Problem:** `prisma.ts` passed only `connectionString`, so pg's pool defaults applied: up to
+10 connections and `connectionTimeoutMillis: 0`, which means a request waits forever when
+all are busy. Prisma 7 takes pool settings from the driver adapter, not `connection_limit`
+in the URL. Neon's 0.25 CU compute allows 112 connections, 7 reserved for Neon.
+**Options:**
+(1) keep pg's defaults and write them down: no change, but a full pool hangs requests
+(2) (chosen) **set them:** `max: 5, connectionTimeoutMillis: 5000` on `PrismaPg`
+(3) Neon's pooler (PgBouncer, transaction mode) for Prisma: needs a new `DATABASE_URL` in
+Render, a direct URL for `prisma migrate`, and pg-boss kept on a direct connection. Worth it
+with many instances or serverless functions, not one API
+**Why:** one instance doesn't need 10; with pg-boss's 3 that's at most 8 connections. A
+full pool now gives an error after 5 s (a 500 in the logs) instead of a hanging request.
+**Trade-off:** under a burst, requests queue for one of 5 connections; more than 5 s of
+queueing fails instead of finishing slowly. The full test suite, including the locking
+tests, still passes with 5.
+Revisit if: we run more than one API instance (then option 3), or logs show pool timeouts.
+Sources: https://neon.com/docs/connect/connection-pooling , https://neon.com/docs/manage/endpoints ,
+https://www.prisma.io/docs/orm/v6/prisma-client/setup-and-configuration/databases-connections/connection-pool
