@@ -207,13 +207,48 @@ Testing approach, accessibility checks, known issues and things to review.
   database), so they have a 30 s timeout instead of Jest's 5 s.
 - Not tested automatically: the limits in production (the 26 Nov test covered login only).
 
+## Late and missed reminder logs (#87, 26 Nov 2026)
+- Fake clock (`now` passed in) and a collected `log`: 2 h 5 m late → `sent late by 2h 5m`;
+  exactly 15 minutes late and on time → no line; late but skipped by the sandbox → no "sent"
+  line; event started 1 minute ago → `missed` line and no email; no line contains `@`.
+  `formatDelay`: 2h 5m, 0h 16m (seconds dropped), 26h 0m.
+- Breaking on purpose, 3 times (file restored from a copy, checksum checked): `>` → `>=`,
+  logging "sent late" for sandbox skips, and removing the "missed" line. Each failed 1 test.
+- Full `npm test`: 217/217 in 2 of 3 runs; 1 unrelated failure in `events.test.ts` in the
+  other (see Open questions).
+- Not tested automatically: the lines on Render (they appear only when a reminder is late).
+
+## Redis cache, production timing (#87, 26 Nov 2026)
+- Same script as the baseline (decision 060), GETs only, from my laptop, 3 runs at
+  12:41–12:42 UTC, right after a cold start (27 s). Median ms (endpoint − `/health`):
+
+| Run | `/health` | list | search (not cached) | event page |
+|---|---|---|---|---|
+| 1 | 43 | 51 (+8) | 47 (+4) | 51 (+8) |
+| 2 | 83 | 68 (−15) | 63 (−20) | 69 (−14) |
+| 3 | 57 | 67 (+10) | 61 (+4) | 66 (+9) |
+| Baseline (25 Nov, before cache) | 80–133 | 89–111 | 103–135 | 73–146 |
+
+- 0 failures in 480 requests. Today's network was faster than on 25 Nov, so compare
+  "endpoint − `/health`", not the raw numbers.
+- What it says: as expected in decision 060, the cache makes no difference you can see from
+  my laptop. The cached list and event page are no faster than search, which isn't cached;
+  the API's own work is a few ms and the network noise (±20 ms between runs) is bigger.
+- Not checked from here: that Render really uses Upstash (the startup line
+  `[redis] cache and rate limits use:` in Render's logs says which store).
+
 ## Open questions
 - **`[proxy]` lines missing on Render (26 Nov 2026), cause not found** (decision 066).
   Also not explained: Render stayed awake from 06:05:39 to 06:22:01 UTC with no wake-api run.
-- **wake-api schedule is irregular (seen 26 Nov 2026), not fixed yet.** Set for every 3 hours,
-  it ran only 3 times in ~30 hours, at irregular times (25 Nov 02:22, 12:45, 23:36 GMT).
-  GitHub's scheduled runs can be delayed or dropped. Risk: if Render is asleep, 24-hour
-  reminder emails can be sent late or miss their window.
+- **wake-api schedule is irregular (seen 26 Nov 2026): kept as a known limitation (#87,
+  decision 069).** About 4 of 13 slots ran, 0.5 to 2.3 hours late; GitHub delays and drops
+  scheduled runs. Late and missed reminders are now logged. The 06:05–06:22 wake above is
+  explained by other traffic: two wake-api runs found the API already awake (curl under 2 s).
+- **`events.test.ts`: 1 test failed once in a full `npm test` (26 Nov 2026), not reproduced.**
+  1 failure in 3 full parallel runs on #87's branch (which doesn't touch that file); it passed
+  alone and in the next 2 full runs (217/217). The failure text wasn't kept. Its list tests
+  search by their own tag, so the new reminder events can't appear in them. To check if it
+  happens again: keep the output (`npm test > file 2>&1`) and look at which test failed.
 - **API tests clean up each other's data when run in parallel (seen 26 Nov 2026). Fixed in
   #83:** new prefixes `ratelimit-test-` and `cache-test-`, and `test-prefixes.test.ts` fails
   if a file's prefix is the start of another file's. `auth.test.ts` deletes every `auth-test-` user, which includes `rate-limit.test.ts`'s

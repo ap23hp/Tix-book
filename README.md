@@ -192,6 +192,20 @@ npm run dev
 
 **Node version on Render:** set by the `NODE_VERSION` environment variable in Render (currently `22.23.5`), which Render's docs give the highest priority. `"engines"` in `api/package.json` (`>=22.12.0 <25`, because pg-boss needs 22.12+) only declares the range the code supports; Render uses it only when nothing else sets the version (decision 054).
 
+## Known limitations
+
+- **The API sleeps.** Render's free plan stops the API after 15 minutes without traffic; the
+  next request waits about a minute while it starts again.
+- **Reminder emails can be late.** pg-boss runs inside the API, so a reminder that comes due
+  while the API sleeps is sent on the next wake-up. If no wake-up comes before the event
+  starts, it isn't sent. Both cases are logged: `[jobs] reminder sent late by Xh Ym` and
+  `[jobs] reminder missed: event already started` (decision 069).
+- **The wake-up is best-effort.** `wake-api.yml` asks GitHub for a run every 3 hours, but
+  GitHub delays and drops scheduled runs under load: from 24 to 26 Nov 2026 about 4 of 13
+  slots ran, each 0.5 to 2.3 hours late.
+- **How it goes away:** a paid always-on instance (or a separate always-on worker). The API
+  then never sleeps, reminders go out within seconds, and the wake-up workflow isn't needed.
+
 ## How I'd scale email
 
 Phase 6 sends a few emails a day in sandbox mode. For real traffic I would:
