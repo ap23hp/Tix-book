@@ -190,6 +190,13 @@ Testing approach, accessibility checks, known issues and things to review.
 - Not tested automatically: that limits really apply on Render after deploy (to check by
   hand, without writing to the production database).
 
+## Test prefixes (#83, 26 Nov 2026)
+- Prefix guard: finds every file's cleanup prefix and fails on any overlap. Breaking on
+  purpose (putting `auth-test-ratelimit-` back) failed it and named the overlap.
+- Proof: full `npm test` in parallel 3 times (07:47:04, 07:47:26, 07:47:47 UTC) and
+  `--runInBand` once (07:48:08): 209/209 each time. Before the fix, 2 parallel runs out of 2
+  failed 4 tests each.
+
 ## Open questions
 - **`[proxy]` lines missing on Render (26 Nov 2026), cause not found** (decision 066).
   Also not explained: Render stayed awake from 06:05:39 to 06:22:01 UTC with no wake-api run.
@@ -197,8 +204,9 @@ Testing approach, accessibility checks, known issues and things to review.
   it ran only 3 times in ~30 hours, at irregular times (25 Nov 02:22, 12:45, 23:36 GMT).
   GitHub's scheduled runs can be delayed or dropped. Risk: if Render is asleep, 24-hour
   reminder emails can be sent late or miss their window.
-- **API tests clean up each other's data when run in parallel (seen 26 Nov 2026), not fixed
-  yet.** `auth.test.ts` deletes every `auth-test-` user, which includes `rate-limit.test.ts`'s
+- **API tests clean up each other's data when run in parallel (seen 26 Nov 2026). Fixed in
+  #83:** new prefixes `ratelimit-test-` and `cache-test-`, and `test-prefixes.test.ts` fails
+  if a file's prefix is the start of another file's. `auth.test.ts` deletes every `auth-test-` user, which includes `rate-limit.test.ts`'s
   `auth-test-ratelimit-` user; `events.test.ts` deletes every `events-test-` user and event,
   which includes `event-cache.test.ts`'s `events-test-cache-` data. Two full `npm test` runs
   failed 4 tests each, in a different file each time (right password → 401; cache tests);

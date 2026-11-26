@@ -1322,5 +1322,15 @@ two `GET /api/v1/events?limit=1` with a made-up `X-Forwarded-For: 203.0.113.9`.
   rewrite".
 So `TRUST_PROXY_HOPS=3` (set on Render by me) is the only value nobody can fake. With the
 limits on, Vercel users share the login and sign-up limits per Vercel IP until PR 2.
+**Proven in production (26 Nov, after 0ac898d went Live at 07:42:36 UTC):** straight to
+Render, made-up `ratelimit-probe-…@example.com` emails and a wrong password. No real account
+was used. Login only reads Postgres for an unknown email, so nothing was written there; only
+Redis counters, which expire.
+- A, per-IP limit: 11 logins with a different email each, 07:43:27–07:43:37. 1–10 → `401`;
+  11th → `429`, `Retry-After: 23` (37 s into the minute, window ends at 07:44:00).
+- B, per-account wait: after the window reset, 6 logins with one email, 07:44:06–07:44:11.
+  1–5 → `401`; 6th → `429`, `Retry-After: 30` (the first wait after 5 failures; only 6
+  requests in that minute, so not the IP limit).
+- C, a normal read: `GET /api/v1/events?limit=1` at 07:44:11 → `200`.
 Revisit if: requests on Render stop arriving on loopback (then the exemption is harmless but
 still not needed there).
