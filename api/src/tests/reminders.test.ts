@@ -10,7 +10,11 @@ import {
 import { prisma } from "../lib/prisma.js";
 import { newReference } from "../lib/bookings.js";
 import { emailGateway } from "../lib/email.js";
-import { reminderTime, sendEventReminderEmail } from "../lib/booking-emails.js";
+import {
+  formatDelay,
+  reminderTime,
+  sendEventReminderEmail,
+} from "../lib/booking-emails.js";
 import {
   enqueueEventReminderEmail,
   QUEUES,
@@ -205,5 +209,94 @@ describe("sending a reminder (checked when the job runs)", () => {
     expect(fake.sent).toHaveLength(0);
     const [job] = await emailJobsFor(booking.id, QUEUES.eventReminder);
     expect(job!.startAfter).toEqual(reminderTime(movedTo));
+  });
+});
+
+// Render's free plan sleeps, so a due reminder can wait for the next wake-up
+// (decision 069). `now` is passed in (a fake clock), and `log` collects the
+// lines instead of printing them.
+describe("late and missed reminders are logged", () => {
+  const MINUTE = 60_000;
+
+  function collectLog() {
+    const lines: string[] = [];
+    return { lines, log: (line: string) => lines.push(line) };
+  }
+
+  it("formats a delay as hours and whole minutes", () => {
+    expect(formatDelay(2 * HOUR + 5 * MINUTE)).toBe("2h 5m");
+    expect(formatDelay(16 * MINUTE + 59_000)).toBe("0h 16m");
+    expect(formatDelay(26 * HOUR)).toBe("26h 0m");
+  });
+
+  it("logs 'sent late' when sent more than 15 minutes after the reminder time", async () => {
+    useFakeSender();
+    const { event, booking } = await bookingForEventIn(48);
+    const remindAt = reminderTime(event.startsAt).getTime();
+    const { lines, log } = collectLog();
+
+    const outcome = await sendEventReminderEmail(
+      booking.id,
+      new Date(remindAt + 2 * HOUR + 5 * MINUTE),
+      log,
+    );
+
+    expect(outcome).toEqual({ status: "sent", id: "fake-1" });
+    expect(lines).toEqual([
+      `[jobs] reminder sent late by 2h 5m (event-reminder/${booking.id}/${event.startsAt.getTime()})`,
+    ]);
+  });
+
+  it("doesn't log at exactly 15 minutes late, or when on time", async () => {
+    useFakeSender();
+    const { event, booking } = await bookingForEventIn(48);
+    const remindAt = reminderTime(event.startsAt).getTime();
+    const { lines, log } = collectLog();
+
+    await sendEventReminderEmail(booking.id, new Date(remindAt), log);
+    await sendEventReminderEmail(
+      booking.id,
+      new Date(remindAt + 15 * MINUTE),
+      log,
+    );
+
+    expect(fake.sent).toHaveLength(2);
+    expect(lines).toEqual([]);
+  });
+
+  it("doesn't say 'sent' when the sandbox skipped the email", async () => {
+    useFakeSender();
+    // Not on the allowlist, so Resend's sandbox rule skips it
+    process.env.EMAIL_SANDBOX_ALLOWLIST = "someone-else@example.com";
+    const { event, booking } = await bookingForEventIn(48);
+    const { lines, log } = collectLog();
+
+    const outcome = await sendEventReminderEmail(
+      booking.id,
+      new Date(reminderTime(event.startsAt).getTime() + 3 * HOUR),
+      log,
+    );
+
+    expect(outcome).toEqual({ status: "skipped", reason: "sandbox" });
+    expect(lines).toEqual([]);
+  });
+
+  it("logs 'missed' when the event has already started, with no email address", async () => {
+    useFakeSender();
+    const { event, booking } = await bookingForEventIn(48);
+    const { lines, log } = collectLog();
+
+    const outcome = await sendEventReminderEmail(
+      booking.id,
+      new Date(event.startsAt.getTime() + MINUTE),
+      log,
+    );
+
+    expect(outcome).toEqual({ status: "skipped", reason: "event started" });
+    expect(fake.sent).toHaveLength(0);
+    expect(lines).toEqual([
+      `[jobs] reminder missed: event already started (event-reminder/${booking.id}/${event.startsAt.getTime()})`,
+    ]);
+    expect(lines.join(" ")).not.toContain("@");
   });
 });
