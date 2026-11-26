@@ -68,6 +68,14 @@ model Event {
   organiser   User   @relation(fields: [organiserId], references: [id])
 
   bookings Booking[]
+
+  // Indexes for the list pages (decision 071). Postgres doesn't index
+  // foreign keys on its own. Column order matters: equality first (status,
+  // organiserId), then the column we sort or range on.
+  // Public list: status = PUBLISHED, startsAt > now, ORDER BY startsAt, id
+  @@index([status, startsAt, id])
+  // Organiser's "My events": organiserId = me, ORDER BY startsAt DESC
+  @@index([organiserId, startsAt])
 }
 
 enum BookingStatus {
@@ -101,6 +109,12 @@ model Booking {
 
   eventId String
   event   Event  @relation(fields: [eventId], references: [id])
+
+  // "My tickets": userId = me, ORDER BY createdAt DESC (also expireHolds by user)
+  @@index([userId, createdAt])
+  // Seats taken and the organiser dashboard: eventId IN (...) / = one event,
+  // with a status filter (also the seat count inside the booking transaction)
+  @@index([eventId, status])
 }
 
 // Stripe webhook events we have finished handling. Stripe may deliver the same
