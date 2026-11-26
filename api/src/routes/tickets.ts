@@ -2,7 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { checkIn } from "../lib/check-in.js";
 import { parseOrThrow } from "../lib/errors.js";
-import { limitByIp } from "../lib/rate-limit.js";
+import { limitByUser } from "../lib/rate-limit.js";
 import { findOwnEvent } from "../lib/own-event.js";
 import { getUser, requireAuth, requireRole } from "../middleware/auth.js";
 
@@ -24,8 +24,10 @@ const verifySchema = z.object({
 // wrong: 400 no code, 401/403 not an organiser, 404 not your event.
 ticketsRouter.post(
   "/verify",
-  limitByIp("ticketVerify"),
   requireAuth,
+  // Per user, after requireAuth: not logged in → 401, never counted.
+  // Before requireRole, so every logged-in caller is counted, 403s too.
+  limitByUser("ticketVerify"),
   requireRole("ORGANISER"),
   async (req, res) => {
     const { eventId, code } = parseOrThrow(
