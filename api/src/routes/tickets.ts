@@ -2,6 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { checkIn } from "../lib/check-in.js";
 import { parseOrThrow } from "../lib/errors.js";
+import { limitByIp } from "../lib/rate-limit.js";
 import { findOwnEvent } from "../lib/own-event.js";
 import { getUser, requireAuth, requireRole } from "../middleware/auth.js";
 
@@ -23,6 +24,7 @@ const verifySchema = z.object({
 // wrong: 400 no code, 401/403 not an organiser, 404 not your event.
 ticketsRouter.post(
   "/verify",
+  limitByIp("ticketVerify"),
   requireAuth,
   requireRole("ORGANISER"),
   async (req, res) => {

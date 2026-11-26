@@ -1343,3 +1343,53 @@ above the camera button each failed a unit test; no scroll also failed the phone
 **Interview line:** "I reproduced the phone bug with Playwright's toBeInViewport at 390 px,
 grouped the camera and result in one panel that scrolls into view, respected reduced
 motion, and kept focus where it was because the button element never changes."
+
+## 2026-11-25 — Phase 7a: Redis cache and rate limiting (#77)
+
+**Measure first:** a small script times 40 GETs per endpoint (`npm run lab:latency`).
+`/health` has no database work, so it shows the network time. On production, my laptop's
+network is most of the ~90 ms; locally, each Neon query is ~19 ms. Without a baseline I
+couldn't say whether the cache helps at all.
+
+**Cache-aside:** look in the cache; on a miss, read Postgres and save a copy with a TTL
+(time to live). The cache only holds copies, so losing it costs speed, never data.
+
+**What not to cache:** seats left. It changes with every booking and when a hold runs out
+(with no write to react to). So I cache the event row and add seats left from Postgres on
+every request. The cache can make a page faster, but never wrong.
+
+**Invalidation with a version number:** every key has `v<N>` in it. Creating or editing an
+event adds 1 to N, so every old key is ignored at once, and they expire by themselves. I read
+N before the database, so a slow request can't save an old copy under the new N.
+
+**Rate limiting, fixed window:** one counter per IP per minute (INCR), which expires at the
+end of the minute. Over the limit: 429 and `Retry-After`.
+
+**Login backoff:** per email, after 5 failures the wait doubles from 30 s to at most 15
+minutes; a correct password clears it. Never a permanent lockout, because then anyone who
+knows your email could lock you out (a denial of service).
+
+**Fail open, fail closed, or fall back:** if Redis is down, the cache is skipped (Postgres
+answers), and rate limits move to memory in the process. Fail open would give attackers
+unlimited guesses; fail closed would stop everyone logging in.
+
+**Timeouts and the breaker again:** Upstash's client retries 5 times by default (about
+12 s). For a cache that's worse than no cache, so no retries, a 500 ms timeout, and the
+phase 6 circuit breaker stops calling Redis for 30 s after 3 failures.
+
+**Interface + fake:** the cache and the limiter only know a 5-method `KeyValueStore`.
+Upstash is one version, a `Map` is the other. Tests use the Map with a fake clock, so
+"15 minutes later" takes no time.
+
+**Breaking it on purpose** (copied first, checked by checksum): caching seats left, no
+invalidation on edit, no "started since" filter, not clearing failures on success, not
+checking the wait before the password, and failing open each failed a test. My first
+"cache seats left" break passed, because the route still recomputed seats after the cache:
+the break wasn't a real break. Done properly, the test failed (5 seats shown instead of 3).
+
+**A mistake:** `prettier --write src/lib/*.ts` reformatted 19 files I hadn't touched (line
+endings). I checked they had no other changes and restored them. Format only named files.
+
+**Interview line:** "I cache event rows but never seats left, because holds expire on their
+own; I invalidate with a version number in the key; and if Redis is down the site falls back
+to Postgres and to in-memory rate limits, so it gets slower but never less safe."

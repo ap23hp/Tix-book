@@ -10,6 +10,36 @@ import { paymentsRouter } from "./routes/payments.js";
 import { ticketsRouter } from "./routes/tickets.js";
 const app = express();
 
+// How many proxies sit in front of the API, so req.ip is the visitor's IP
+// (used for rate limiting) and not the proxy's. 0 locally (no proxy).
+// On Render it is set by TRUST_PROXY_HOPS; the number has to match the real
+// chain (Vercel, then Render's own proxy), see decision 064.
+// A missing or non-number value means 0.
+app.set(
+  "trust proxy",
+  Number.parseInt(process.env.TRUST_PROXY_HOPS ?? "", 10) || 0,
+);
+
+// To choose that number from evidence: for the first few API requests after
+// each start, log how many addresses X-Forwarded-For holds, whether the
+// request came through Vercel, and whether the connection is from loopback
+// (rate limits skip loopback). Counts and yes/no only, never an address.
+let proxyLogsLeft = 5;
+app.use("/api", (req, _res, next) => {
+  if (proxyLogsLeft > 0) {
+    proxyLogsLeft--;
+    const forwarded = req.get("x-forwarded-for");
+    const entries = forwarded ? forwarded.split(",").length : 0;
+    const loopback = ["127.0.0.1", "::1", "::ffff:127.0.0.1"].includes(
+      req.socket.remoteAddress ?? "",
+    );
+    console.log(
+      `[proxy] x-forwarded-for entries=${entries} via-vercel=${Boolean(req.get("x-vercel-id"))} loopback=${loopback} trust-proxy=${String(app.get("trust proxy"))}`,
+    );
+  }
+  next();
+});
+
 // Stripe webhooks first: they need the raw body for the signature check,
 // so they must come before express.json(). They also skip the CSRF check,
 // which is for browsers; the Stripe signature protects this route instead.

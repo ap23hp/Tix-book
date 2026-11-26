@@ -1,5 +1,6 @@
 import app from "./app.js";
 import { startJobs, stopJobs } from "./lib/jobs.js";
+import { storeKind } from "./lib/redis.js";
 
 const PORT = Number(process.env.PORT) || 4000;
 
@@ -11,6 +12,8 @@ await startJobs({ workers: true });
 
 const server = app.listen(PORT, () => {
   console.log(`API running on port ${PORT}`);
+  // Which store the cache and rate limits use (never the URL or token)
+  console.log(`[redis] cache and rate limits use: ${storeKind}`);
 });
 
 // Render sends SIGTERM before stopping the service (deploys, sleep).

@@ -15,6 +15,8 @@ import { expireHolds, holdSeats } from "../lib/bookings.js";
 import { bookingEventSelect, bookingView } from "../lib/booking-view.js";
 import { holdSeatsSchema } from "../schemas/booking.js";
 import { findOwnEvent } from "../lib/own-event.js";
+import { cachedEvents, invalidateEvents } from "../lib/event-cache.js";
+import { limitByIp } from "../lib/rate-limit.js";
 export const eventsRouter = Router();
 
 // GET /api/v1/events → published, upcoming events, soonest first.
@@ -32,34 +34,62 @@ eventsRouter.get("/", async (req, res) => {
   const after = cursor ? decodeCursor(cursor) : null;
   if (cursor && !after) throw new HttpError(400, "Invalid cursor");
 
-  // Ask for one extra row: if it comes back, there's another page
-  const rows = await prisma.event.findMany({
-    where: {
-      status: "PUBLISHED",
-      startsAt: { gt: new Date() },
-      ...(q && { title: { contains: q, mode: "insensitive" } }),
-      ...(category && { category: { equals: category, mode: "insensitive" } }),
-      ...(format && { format }),
-      ...(after && {
-        OR: [
-          { startsAt: { gt: after.startsAt } },
-          { startsAt: after.startsAt, id: { gt: after.id } },
-        ],
-      }),
-    },
-    orderBy: [{ startsAt: "asc" }, { id: "asc" }],
-    take: limit + 1,
-    omit: { meetingLink: true }, // the link is only for people who booked
-  });
+  const loadPage = async () => {
+    // Ask for one extra row: if it comes back, there's another page
+    const rows = await prisma.event.findMany({
+      where: {
+        status: "PUBLISHED",
+        startsAt: { gt: new Date() },
+        ...(q && { title: { contains: q, mode: "insensitive" } }),
+        ...(category && {
+          category: { equals: category, mode: "insensitive" },
+        }),
+        ...(format && { format }),
+        ...(after && {
+          OR: [
+            { startsAt: { gt: after.startsAt } },
+            { startsAt: after.startsAt, id: { gt: after.id } },
+          ],
+        }),
+      },
+      orderBy: [{ startsAt: "asc" }, { id: "asc" }],
+      take: limit + 1,
+      omit: { meetingLink: true }, // the link is only for people who booked
+    });
 
-  const hasMore = rows.length > limit;
-  const events = hasMore ? rows.slice(0, limit) : rows;
-  const last = events.at(-1);
+    const hasMore = rows.length > limit;
+    const events = hasMore ? rows.slice(0, limit) : rows;
+    const last = events.at(-1);
+    return {
+      events,
+      nextCursor: hasMore && last ? encodeCursor(last) : null,
+    };
+  };
+
+  // Browsing (no search) is cached, without seats left (lib/event-cache.ts).
+  // Searches aren't: every typed word is a new key that is rarely asked
+  // for again. Category is matched case-insensitively, so it's lowercased
+  // in the key to share one entry.
+  const page = q
+    ? await loadPage()
+    : await cachedEvents(
+        `list:${JSON.stringify([category?.toLowerCase(), format, limit, cursor])}`,
+        loadPage,
+      );
+
+  // A cached page may be up to 30 s old: drop any event that has started
+  // since (the database query only returns upcoming ones). After the cache's
+  // JSON round trip, startsAt is a string; new Date() reads both.
+  const now = Date.now();
+  const upcoming = page.events.filter(
+    (event) => new Date(event.startsAt).getTime() > now,
+  );
 
   res.status(200).json({
-    // Same seats-left calculation as GET /:id (lib/seats.ts)
-    events: await withSeatsLeft(events),
-    nextCursor: hasMore && last ? encodeCursor(last) : null,
+    // Seats left always comes fresh from Postgres, never from the cache.
+    // Same calculation as GET /:id (lib/seats.ts)
+    events: await withSeatsLeft(upcoming),
+    nextCursor: page.nextCursor,
   });
 });
 
@@ -193,14 +223,19 @@ eventsRouter.get(
 
 // GET /api/v1/events/:id → one published event, with seats left
 eventsRouter.get("/:id", async (req, res) => {
-  const event = await prisma.event.findFirst({
-    where: { id: req.params.id, status: "PUBLISHED" },
-    omit: { meetingLink: true },
-  });
+  const id = req.params.id;
+  // The event row may come from the cache; seats left never does
+  const event = await cachedEvents(`event:${id}`, () =>
+    prisma.event.findFirst({
+      where: { id, status: "PUBLISHED" },
+      omit: { meetingLink: true },
+    }),
+  );
 
   if (!event) throw new HttpError(404, "Event not found");
 
-  // Same seats-left calculation as the list (lib/seats.ts)
+  // Fresh from Postgres on every request. Same calculation as the list
+  // (lib/seats.ts)
   const [withSeats] = await withSeatsLeft([event]);
   res.status(200).json(withSeats);
 });
@@ -222,6 +257,8 @@ eventsRouter.post(
     const event = await prisma.event.create({
       data: { ...data, organiserId: getUser(res).id },
     });
+    // A new published event belongs on the list straight away
+    await invalidateEvents();
 
     res.status(201).json(event);
   },
@@ -231,28 +268,34 @@ eventsRouter.post(
 // book them (free event). Any logged-in user can book (decision 037).
 // 201 = new booking; 200 = this idempotency key was already used, so this is
 // the same booking again; 409 = not enough seats, or the event has started.
-eventsRouter.post("/:id/bookings", requireAuth, async (req, res) => {
-  const { seats, idempotencyKey } = parseOrThrow(
-    holdSeatsSchema,
-    req.body,
-    "Invalid booking",
-  );
-  const eventId = req.params.id;
-  if (typeof eventId !== "string") throw new HttpError(404, "Event not found");
+eventsRouter.post(
+  "/:id/bookings",
+  limitByIp("hold"),
+  requireAuth,
+  async (req, res) => {
+    const { seats, idempotencyKey } = parseOrThrow(
+      holdSeatsSchema,
+      req.body,
+      "Invalid booking",
+    );
+    const eventId = req.params.id;
+    if (typeof eventId !== "string")
+      throw new HttpError(404, "Event not found");
 
-  const { booking, created } = await holdSeats({
-    eventId,
-    userId: getUser(res).id,
-    seats,
-    idempotencyKey,
-  });
+    const { booking, created } = await holdSeats({
+      eventId,
+      userId: getUser(res).id,
+      seats,
+      idempotencyKey,
+    });
 
-  const event = await prisma.event.findUnique({
-    where: { id: booking.eventId },
-    select: bookingEventSelect,
-  });
-  res.status(created ? 201 : 200).json(bookingView(booking, event));
-});
+    const event = await prisma.event.findUnique({
+      where: { id: booking.eventId },
+      select: bookingEventSelect,
+    });
+    res.status(created ? 201 : 200).json(bookingView(booking, event));
+  },
+);
 
 // PATCH /api/v1/events/:id → edit one of my events (send only what changed)
 // Order: who are you (401) → organiser? (403) → your event? (404) → valid? (400)
@@ -288,6 +331,10 @@ eventsRouter.patch(
         where: { id: event.id, organiserId },
         data: changes,
       });
+      // After the save, never before: invalidating first would let a request
+      // in between cache the old row again (decision 063). Covers every
+      // edit: title, time, publish, back to draft...
+      await invalidateEvents();
       res.status(200).json(updated);
     } catch (err) {
       // P2025 = no row matched (e.g. deleted a moment ago)

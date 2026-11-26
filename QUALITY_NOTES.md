@@ -152,6 +152,27 @@ Testing approach, accessibility checks, known issues and things to review.
 - Not tested: phones shorter than 844 px (the result is ~24 px from the bottom), and real
   phone browsers (only Chromium).
 
+## Redis cache and rate limits (#77, 25 Nov 2026)
+- Tests use an in-memory store (`MemoryStore`) and a fake clock; they never touch Redis, even
+  when Upstash keys are in `.env` (`NODE_ENV=test` always picks memory).
+- Cache (API, dev database): the second request comes from the cache; seats left changes
+  after a booking without any invalidation (page and list); an API edit, back to draft, and a
+  new event show at once; "not found" isn't cached; searches aren't cached; an event that
+  started after caching is dropped; Redis down → still 200 from Postgres, edits still work;
+  a poisoned cache (100 seats for a 1-seat event) doesn't let a booking through.
+- Rate limits: each route's limit, Retry-After, another IP unaffected, the next window;
+  login wait from 5 failures (from different IPs), doubling, capped at 15 minutes, cleared by
+  success, forgotten after 24 h, the same for unknown emails; Redis down → still limited
+  (memory) and still able to log in.
+- Store: expiry, counters, the 10,000-key cap, the key prefix (dev ≠ production, no host in
+  it), the circuit breaker (3 failures → not called, trial after 30 s).
+- Breaking on purpose: 6 breaks, each failed a test (see LEARNING_LOG).
+- Not tested automatically: the real Upstash store (to run by hand once keys exist); the
+  "version read before the database" race (hard to time in a test); the right
+  `TRUST_PROXY_HOPS` on Render (from the startup log after deploy).
+- Local timing after (memory store, not Upstash): list and event page 40 → 23 ms median;
+  search unchanged at ~43 ms (not cached).
+
 ## Open questions
 - **Vercel and `?limit=100` (20 Nov 2026), not explained yet.** `GET /api/v1/events?limit=100`
   through the Vercel rewrite (tix-book.vercel.app) returned events, but the same request to

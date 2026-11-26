@@ -15,7 +15,9 @@
     "format:check": "prettier --check .",
     "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
     "lab:locking": "tsx src/lab/locking-bench.ts",
-    "email:test": "tsx src/scripts/email-test.ts"
+    "email:test": "tsx src/scripts/email-test.ts",
+    "lab:latency": "tsx src/lab/latency-bench.ts",
+    "lab:redis": "tsx src/lab/redis-check.ts"
   },
   "keywords": [],
   "author": "",
@@ -24,6 +26,7 @@
   "dependencies": {
     "@prisma/adapter-pg": "^7.10.1",
     "@prisma/client": "^7.10.1",
+    "@upstash/redis": "^1.41.0",
     "arctic": "^3.7.0",
     "argon2": "^0.45.2",
     "cookie-parser": "^1.4.7",

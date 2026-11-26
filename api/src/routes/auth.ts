@@ -21,6 +21,12 @@ import { findOrCreateGoogleUser } from "../lib/google-user.js";
 import { getUser, requireAuth } from "../middleware/auth.js";
 import { HttpError, parseOrThrow } from "../lib/errors.js";
 import {
+  checkLoginWait,
+  clearLoginFailures,
+  limitByIp,
+  recordLoginFailure,
+} from "../lib/rate-limit.js";
+import {
   googleClaimsSchema,
   loginSchema,
   signupSchema,
@@ -29,7 +35,7 @@ import {
 export const authRouter = Router();
 
 // POST /api/v1/auth/signup → create an account and log in straight away
-authRouter.post("/signup", async (req, res) => {
+authRouter.post("/signup", limitByIp("signup"), async (req, res) => {
   // Invalid body → throws 400 { error, details } (see lib/errors.ts)
   const { name, email, password, role } = parseOrThrow(
     signupSchema,
@@ -83,12 +89,16 @@ authRouter.post("/signup", async (req, res) => {
 const dummyHash = hashPassword("not-a-real-password");
 
 // POST /api/v1/auth/login → check password, create session, set cookie
-authRouter.post("/login", async (req, res) => {
+authRouter.post("/login", limitByIp("login"), async (req, res) => {
   const { email, password } = parseOrThrow(
     loginSchema,
     req.body,
     "Invalid login data",
   );
+  // Still waiting after too many wrong passwords for this email? 429,
+  // before the password is even checked (decision 065)
+  await checkLoginWait(req, res, email);
+
   const user = await prisma.user.findUnique({ where: { email } });
 
   // Always run verify, even with no user, so timing looks the same
@@ -97,8 +107,11 @@ authRouter.post("/login", async (req, res) => {
 
   // Same message for wrong email and wrong password
   if (!user || !user.passwordHash || !passwordOk) {
+    // Counted for unknown emails too: the answers stay the same either way
+    await recordLoginFailure(req, email);
     throw new HttpError(401, "Invalid email or password");
   }
+  await clearLoginFailures(email);
 
   const { token, expiresAt } = await createSession(user.id);
   res.cookie(SESSION_COOKIE, token, sessionCookieOptions(expiresAt));
