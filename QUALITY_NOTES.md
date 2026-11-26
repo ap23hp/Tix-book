@@ -173,7 +173,27 @@ Testing approach, accessibility checks, known issues and things to review.
 - Local timing after (memory store, not Upstash): list and event page 40 → 23 ms median;
   search unchanged at ~43 ms (not cached).
 
+## "[proxy]" log diagnostics (#79, 26 Nov 2026)
+- The `[proxy]` lines didn't appear on Render after 9038a2e; cause not found in code
+  (decision 066). Added an "armed" startup line and one "limit reached" line. Tests: the armed
+  text, counts only (no address), N lines then ONE limit line then nothing, `/health` doesn't
+  use up the count, and the real app logs on `/api` but not `/health`. Breaking on purpose
+  (no limit line) failed a test.
+
 ## Open questions
+- **`[proxy]` lines missing on Render (26 Nov 2026), cause not found** (decision 066).
+  Also not explained: Render stayed awake from 06:05:39 to 06:22:01 UTC with no wake-api run.
+- **wake-api schedule is irregular (seen 26 Nov 2026), not fixed yet.** Set for every 3 hours,
+  it ran only 3 times in ~30 hours, at irregular times (25 Nov 02:22, 12:45, 23:36 GMT).
+  GitHub's scheduled runs can be delayed or dropped. Risk: if Render is asleep, 24-hour
+  reminder emails can be sent late or miss their window.
+- **API tests clean up each other's data when run in parallel (seen 26 Nov 2026), not fixed
+  yet.** `auth.test.ts` deletes every `auth-test-` user, which includes `rate-limit.test.ts`'s
+  `auth-test-ratelimit-` user; `events.test.ts` deletes every `events-test-` user and event,
+  which includes `event-cache.test.ts`'s `events-test-cache-` data. Two full `npm test` runs
+  failed 4 tests each, in a different file each time (right password → 401; cache tests);
+  `npm test -- --runInBand` passed 203/203. Fix: prefixes that don't start with another
+  file's prefix.
 - **Vercel and `?limit=100` (20 Nov 2026), not explained yet.** `GET /api/v1/events?limit=100`
   through the Vercel rewrite (tix-book.vercel.app) returned events, but the same request to
   Render directly returned the correct 400 (limit must be 1–50). Possible causes to check:

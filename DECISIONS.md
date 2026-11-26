@@ -1253,3 +1253,34 @@ Trade-off: an attacker can keep someone waiting up to 15 minutes at a time (neve
 the owner's correct login clears it). Google login isn't affected.
 Revisit if: we add a password-reset email (then a stronger lock with an unlock link is
 possible), or MFA (OWASP's strongest defence against these attacks).
+
+## 066 — Missing "[proxy]" lines: an observability gap, cause not found in code
+Date: 2026-11-26 (issue #79)
+**What happened:** commit 9038a2e went Live on Render at 06:00:04 UTC and logged "API running"
+and the `[redis]` line. At least 6 `GET /api/v1/events?limit=1` returned 200 after that
+(06:05:38–39 and 06:22:01–11 UTC, through Vercel and straight to Render), but Render Logs
+showed no `[proxy]` line and no restart.
+**Checked, and not the cause:** the Vercel rewrite keeps `/api` (`/api/:path*` →
+`${API_URL}/api/:path*`); the logger was the first middleware, mounted on `/api`; no
+`NODE_ENV` guard; the counter only went down when it logged; nothing replaces `console`. The
+answers really came from Express (`x-powered-by: Express`, `cf-cache-status: DYNAMIC`,
+`x-vercel-cache: MISS`). A fresh build run with `NODE_ENV=production`, stdout piped to a file,
+printed the lines. So the cause is **not found**; this is not recorded as a fixed bug.
+**Also unexplained:** Render did not sleep between 06:05:39 and 06:22:01 (over 15 minutes),
+and the wake-api workflow didn't run in that window (its last run was 25 Nov 23:36 GMT).
+What kept it awake is not known.
+**Options:**
+(1) leave the log as it was and look again (the same silence can mean two things)
+(2) guess a cause and change the code to "fix" it (no evidence for any guess)
+(3) (chosen) **make the silence readable:** right after "API running", print
+`[proxy] log armed for 5 /api requests`; after the 5 lines, print one
+`[proxy] limit reached, no more lines until restart` (at most once per process, so logs don't
+fill up). The logger moved to `lib/proxy-log.ts`, with the log function passed in, so tests can
+count lines.
+How to read the next deploy: no "armed" line → this code isn't what's running; "armed" but no
+`[proxy] x-forwarded-for` line after a request → that request didn't reach this process's
+`/api` middleware; the lines appear → the first time was a one-off, still unexplained.
+Trade-off: one more log line per start, and one after the 5th request. No behaviour change.
+`TRUST_PROXY_HOPS` is still chosen from the lines, not from this decision.
+Revisit if: the lines still don't appear after this deploy, or once `TRUST_PROXY_HOPS` is set
+(then the log can be removed).
