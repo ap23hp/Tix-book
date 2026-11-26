@@ -1081,11 +1081,18 @@ API (e.g. a `Server-Timing` header) would be more precise; not added, to keep th
 Date: 2026-11-25 (Upstash pricing page and the SDK's own docs and types, read the same day)
 Options: (1) `@upstash/redis`, Upstash's client over HTTPS (REST)
          (2) `ioredis` / `node-redis` over TCP (TLS, `rediss://`), which Upstash also offers
-Facts: free plan "250MB data size and 500K commands per month", 10 GB bandwidth a month,
-10,000 commands a second, and "A free account can have 1 database"
-(https://upstash.com/pricing/redis). The pricing FAQ says per-command pricing "applies to
-your REST calls too", and AUTH, PING, HELLO and similar are "not charged". It does not say
-how pipelines or Lua scripts are counted, or what happens on the free plan past 500K.
+Facts (https://upstash.com/pricing/redis, re-read 26 Nov): Free has 10,000 commands a
+second, 10 GB bandwidth a month, 250 MB data (one table cell on the same page says 256MB),
+and "A free account can have 1 database". The pricing FAQ says per-command pricing "applies
+to your REST calls too", and AUTH, PING, HELLO and similar are "not charged". It does not
+say how pipelines or Lua scripts are counted, or what happens when a free database goes
+over a limit.
+**Monthly commands: the sources disagree.** The pricing page's Free card says "Monthly
+Commands 500K" and its FAQ says "Free tier includes 250MB data size and 500K commands per
+month" (both still there on 26 Nov). The Upstash dashboard for our free database shows
+10,000 commands a second, 250 MB and 10 GB bandwidth, and **no** monthly command limit.
+I can't tell which is current, so I plan as if 500K a month applies (the stricter one) and
+will check the usage numbers in the dashboard.
 Chose: 1.
 Why:
 - No connection to manage. Render's free plan sleeps and wakes; a TCP client must reconnect
@@ -1108,8 +1115,8 @@ in-memory store, so a fresh clone still runs. Tests always use memory, even with
 **One database for dev and production** (the free plan allows one): every key starts with
 `tixbook:<8 hex>:`, a hash of the database host. The dev API and the live API can never read
 each other's cache or counters, with no setting that could be forgotten.
-Trade-off: an HTTP request per call (pipelines help); dev traffic uses the same 500K budget
-as production; and a dev mistake could touch production keys (we never use FLUSHDB or KEYS).
+Trade-off: an HTTP request per call (pipelines help); dev traffic uses the same budget as
+production; and a dev mistake could touch production keys (we never use FLUSHDB or KEYS).
 A paid plan or a second provider would separate them.
 Revisit if: we need pub/sub or blocking commands (TCP only), or measured latency is poor.
 
@@ -1123,7 +1130,9 @@ Commands per request, from the code (each command in a pipeline counted, to be s
   (1), then on success clears it (1), on failure counts it (2, +1 from the 5th failure)
 Generous traffic for this project (portfolio, plus the phase 9 sessions), per day: 300 event
 reads (≈ 700 commands), 30 logins (≈ 120), 20 seat holds (40), 5 sign-ups (10), a door with
-50 scans (100). About **1,000 a day ≈ 30K a month, ~6% of 500K**.
+50 scans (100). About **1,000 a day ≈ 30K a month**: ~6% of 500K, if the monthly limit on
+the pricing page applies (decision 061: the dashboard doesn't show one). Either way it's
+far below 10,000 a second.
 The 3-hourly wake-up (decision 052) costs **0**: `/health` never touches Redis, and an HTTP
 client has no connection to open or keep alive (a TCP client's AUTH and PING aren't charged
 either). pg-boss stays on Postgres.
@@ -1131,7 +1140,8 @@ What could use it up: load tests (500 simulated users × 10 reads ≈ 10K per ru
 local e2e runs with real keys (~500 per run), and a flood of requests on limited routes
 (2 each). If the budget ran out, Redis calls would fail and the app falls back (decision
 063: Postgres; decision 064: in-memory limits), so it gets slower, it doesn't stop.
-Revisit if: the console shows more than ~250K in a month.
+Revisit if: the dashboard shows more than ~250K in a month, or Upstash confirms which
+monthly limit applies to Free.
 
 ## 063 — What the event cache holds: event rows, never seats left
 Date: 2026-11-25
