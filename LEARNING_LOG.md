@@ -1393,3 +1393,19 @@ endings). I checked they had no other changes and restored them. Format only nam
 **Interview line:** "I cache event rows but never seats left, because holds expire on their
 own; I invalidate with a version number in the key; and if Redis is down the site falls back
 to Postgres and to in-memory rate limits, so it gets slower but never less safe."
+
+## Making a silent log readable (#79, 26 Nov 2026)
+
+**The problem:** the `[proxy]` log printed nothing on Render. Silence could mean "the code
+isn't running" or "no request reached it". I checked the mount path, the order, the guards,
+the counter and the build, and reproduced it locally: it worked. So I did not guess a fix.
+
+**What I added:** a startup line ("armed for 5") and one line when the limit is reached. Now
+each case looks different in the logs. The limit line prints once, so logs can't fill up.
+
+**Passing the log function in:** `createProxyLogger({ log })` takes the function that writes a
+line. Production uses `console.log`; tests pass one that pushes into an array and count it.
+
+**Interview line:** "When a log is missing, I first make the silence mean one thing: an 'armed'
+line at startup and a 'limit reached' line, so the next deploy tells me where it stops,
+instead of guessing a fix."

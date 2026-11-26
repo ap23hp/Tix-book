@@ -1,6 +1,7 @@
 import app from "./app.js";
 import { startJobs, stopJobs } from "./lib/jobs.js";
 import { storeKind } from "./lib/redis.js";
+import { proxyArmedLine } from "./lib/proxy-log.js";
 
 const PORT = Number(process.env.PORT) || 4000;
 
@@ -12,6 +13,8 @@ await startJobs({ workers: true });
 
 const server = app.listen(PORT, () => {
   console.log(`API running on port ${PORT}`);
+  // So "no [proxy] lines" can't be mistaken for "this code isn't running"
+  console.log(proxyArmedLine());
   // Which store the cache and rate limits use (never the URL or token)
   console.log(`[redis] cache and rate limits use: ${storeKind}`);
 });
