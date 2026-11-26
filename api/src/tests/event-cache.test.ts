@@ -36,7 +36,7 @@ let organiserId = "";
 let attendeeId = "";
 
 async function logInAs(role: "ATTENDEE" | "ORGANISER") {
-  const email = `events-test-cache-${role.toLowerCase()}-${runId}@example.com`;
+  const email = `cache-test-${role.toLowerCase()}-${runId}@example.com`;
   const password = "test-password-1";
   await request(app)
     .post("/api/v1/auth/signup")
@@ -95,13 +95,13 @@ beforeEach(() => {
 
 afterAll(async () => {
   await prisma.booking.deleteMany({
-    where: { user: { email: { startsWith: "events-test-cache-" } } },
+    where: { user: { email: { startsWith: "cache-test-" } } },
   });
   await prisma.event.deleteMany({
-    where: { organiser: { email: { startsWith: "events-test-cache-" } } },
+    where: { organiser: { email: { startsWith: "cache-test-" } } },
   });
   await prisma.user.deleteMany({
-    where: { email: { startsWith: "events-test-cache-" } },
+    where: { email: { startsWith: "cache-test-" } },
   });
   await prisma.$disconnect();
 });
@@ -286,7 +286,7 @@ describe("booking never reads the cache", () => {
     const attendee = await request(app)
       .post("/api/v1/auth/login")
       .send({
-        email: `events-test-cache-attendee-${runId}@example.com`,
+        email: `cache-test-attendee-${runId}@example.com`,
         password: "test-password-1",
       });
     const cookie = attendee.get("Set-Cookie")?.[0]?.split(";")[0] ?? "";

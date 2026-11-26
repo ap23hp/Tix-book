@@ -25,7 +25,7 @@ import {
 // through X-Forwarded-For (trusted for 1 hop in this file only).
 
 const runId = Date.now();
-const email = `auth-test-ratelimit-${runId}@example.com`;
+const email = `ratelimit-test-${runId}@example.com`;
 const password = "correct-horse-1";
 let clock = Date.UTC(2026, 10, 25, 12, 0, 30); // 30 s into a minute
 let ipCounter = 0;
@@ -76,7 +76,7 @@ afterAll(async () => {
   rateLimitSettings.now = () => Date.now();
   app.set("trust proxy", 0);
   await prisma.user.deleteMany({
-    where: { email: { startsWith: "auth-test-ratelimit-" } },
+    where: { email: { startsWith: "ratelimit-test-" } },
   });
   await prisma.$disconnect();
 });
@@ -87,7 +87,7 @@ describe("per-IP limits", () => {
     // Unknown emails, so the per-account wait doesn't get involved
     for (let i = 0; i < LIMITS.login.limit; i++) {
       const res = await login(ip, {
-        email: `auth-test-ratelimit-nobody-${i}-${runId}@example.com`,
+        email: `ratelimit-test-nobody-${i}-${runId}@example.com`,
         password: "wrong",
       });
       expect(res.status).toBe(401);
@@ -123,7 +123,7 @@ describe("per-IP limits", () => {
       .set("X-Forwarded-For", ip)
       .send({
         name: "Too many",
-        email: `auth-test-ratelimit-signup-${runId}@example.com`,
+        email: `ratelimit-test-signup-${runId}@example.com`,
         password,
       });
     expect(blocked.status).toBe(429);
@@ -131,7 +131,7 @@ describe("per-IP limits", () => {
     // Nothing was created
     expect(
       await prisma.user.count({
-        where: { email: `auth-test-ratelimit-signup-${runId}@example.com` },
+        where: { email: `ratelimit-test-signup-${runId}@example.com` },
       }),
     ).toBe(0);
   });
@@ -243,7 +243,7 @@ describe("login: per-account wait after failures", () => {
   });
 
   it("treats an unknown email the same way (no hint that it doesn't exist)", async () => {
-    const nobody = `auth-test-ratelimit-ghost-${runId}@example.com`;
+    const nobody = `ratelimit-test-ghost-${runId}@example.com`;
     for (let i = 0; i < LOGIN_BACKOFF.freeFailures; i++) {
       expect(
         (await login(newIp(), { email: nobody, password: "wrong" })).status,
@@ -271,7 +271,7 @@ describe("when Redis is down", () => {
     const ip = newIp();
     for (let i = 0; i < LIMITS.login.limit; i++) {
       await login(ip, {
-        email: `auth-test-ratelimit-down-${i}-${runId}@example.com`,
+        email: `ratelimit-test-down-${i}-${runId}@example.com`,
         password: "wrong",
       });
     }
