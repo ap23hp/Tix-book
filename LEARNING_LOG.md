@@ -1409,3 +1409,20 @@ line. Production uses `console.log`; tests pass one that pushes into an array an
 **Interview line:** "When a log is missing, I first make the silence mean one thing: an 'armed'
 line at startup and a 'limit reached' line, so the next deploy tells me where it stops,
 instead of guessing a fix."
+
+## Fail-safe defaults: a forgotten setting should keep you safe (#81, 26 Nov 2026)
+
+**The bug:** rate limits skipped requests from loopback (127.0.0.1), to make local work easy.
+On Render, Render's own proxy connects from loopback, so every request skipped every limit.
+Nothing failed and nothing was logged; it only showed up in the `[proxy]` diagnostics.
+
+**The fix:** the exemption is now opt-in. It is on only when `RATE_LIMIT_EXEMPT_LOOPBACK=true`.
+If the variable is missing, the limits apply. Forgetting it locally gives a 429 (easy to see);
+before, forgetting to switch it off gave no limits in production (impossible to see).
+
+**Tests set their own env:** `jest.setup-env.js` runs in every test file before the modules
+load, so tests don't depend on what's in my `.env`.
+
+**Interview line:** "A security setting should fail safe: if the variable is missing, the
+protection is on. Our rate-limit exemption was on by default, and on Render every request
+looked local, so the limits were silently off until I made it opt-in."
