@@ -1284,3 +1284,43 @@ Trade-off: one more log line per start, and one after the 5th request. No behavi
 `TRUST_PROXY_HOPS` is still chosen from the lines, not from this decision.
 Revisit if: the lines still don't appear after this deploy, or once `TRUST_PROXY_HOPS` is set
 (then the log can be removed).
+**Update (26 Nov, after #80):** the lines did appear after the 9543164 deploy (07:04 UTC):
+through Vercel `entries=4`, direct `entries=3`, and `loopback=true` on every request. Why
+they were missing the first time is still not known.
+
+## 067 — Correcting 064: loopback is exempt from rate limits only when asked for
+Date: 2026-11-26 (issue #81)
+**What 064 got wrong:** it said "on Render, requests come from Render's proxy", so the
+loopback exemption couldn't apply there. The `[proxy]` log (decision 066) shows
+`loopback=true` on **every** request on Render: Render's proxy connects to Express from
+inside the same machine. Because the exemption was on by default, every production request
+skipped every limit from #78 until this fix: the per-IP limits (login, sign-up, holds, ticket
+checks) and the per-account login wait (065).
+**Options:**
+(1) keep the exemption on by default and switch it off on Render with an env var: one
+forgotten setting and production has no limits again, with nothing to show it
+(2) exempt only when `NODE_ENV` isn't "production": depends on Render setting `NODE_ENV`,
+which I haven't checked, and mixes two meanings in one variable
+(3) (chosen) **opt-in:** exempt only when `RATE_LIMIT_EXEMPT_LOOPBACK` is exactly `true`
+(spaces trimmed). Local `api/.env` sets it; the tests set it in `jest.setup-env.js`, so they
+don't depend on local settings; Render doesn't have it.
+Why: a forgotten setting now fails safe (limits on). The cost of forgetting it locally is a 429
+during development, which shows at once; the cost of the old way was no limits in
+production, which showed nowhere.
+Trade-off: one more line in local `.env`; anything that runs the API on this machine without
+it (a fresh clone) gets the real limits.
+**Which IP, proven (26 Nov, after a restart at 07:34:10 UTC with `TRUST_PROXY_HOPS=3`):**
+two `GET /api/v1/events?limit=1` with a made-up `X-Forwarded-For: 203.0.113.9`.
+- Direct to Render: `entries=4 via-vercel=false trust-proxy=3` (3 without the made-up
+  header). Render **keeps** the client's header and appends: `[made-up, client, hop, hop]`.
+  With n=3, `req.ip` = `XFF[length − 3]` = the real client, so a made-up header can't change it.
+- Through Vercel: `entries=4 via-vercel=true trust-proxy=3` (4 without it too). Vercel
+  **replaces** the header: `[visitor, Vercel, hop, hop]`. With n=3, `req.ip` = Vercel's IP.
+- A third path: Vercel's servers calling `API_URL` (Server Components) look like direct
+  requests (`entries=3`), but still have `x-vercel-id`; `req.ip` = Vercel's server IP. All of
+  them are GETs that aren't rate-limited. So `x-vercel-id` doesn't mean "came through the
+  rewrite".
+So `TRUST_PROXY_HOPS=3` (set on Render by me) is the only value nobody can fake. With the
+limits on, Vercel users share the login and sign-up limits per Vercel IP until PR 2.
+Revisit if: requests on Render stop arriving on loopback (then the exemption is harmless but
+still not needed there).

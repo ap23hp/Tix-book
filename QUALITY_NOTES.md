@@ -180,6 +180,16 @@ Testing approach, accessibility checks, known issues and things to review.
   use up the count, and the real app logs on `/api` but not `/health`. Breaking on purpose
   (no limit line) failed a test.
 
+## Rate limits off in production (#81, 26 Nov 2026)
+- **Rate limits were off in production from #78 until this fix.** Every request on Render
+  arrives on loopback (`[proxy] ... loopback=true`), and loopback was exempt by default
+  (decision 067). Now exempt only with `RATE_LIMIT_EXEMPT_LOOPBACK=true`.
+- Tests: only exactly `true` (trimmed) turns it on; without it a loopback connection gets
+  429 after 10 logins; with it, it doesn't; the tests' setup file turns it on. Breaking on
+  purpose (on unless "false") failed 2 tests.
+- Not tested automatically: that limits really apply on Render after deploy (to check by
+  hand, without writing to the production database).
+
 ## Open questions
 - **`[proxy]` lines missing on Render (26 Nov 2026), cause not found** (decision 066).
   Also not explained: Render stayed awake from 06:05:39 to 06:22:01 UTC with no wake-api run.

@@ -34,13 +34,19 @@ export const LOGIN_BACKOFF = {
   forgetAfterMs: 24 * 60 * 60_000,
 };
 
+// Should requests whose TCP connection comes from this machine (loopback)
+// skip the limits? Only when RATE_LIMIT_EXEMPT_LOOPBACK is exactly "true":
+// local development and local e2e runs set it in api/.env, and the tests set
+// it in jest.setup-env.js. Missing or anything else → limits apply.
+// It must be opt-in: on Render every request arrives from Render's proxy on
+// loopback ("[proxy] ... loopback=true"), so an exemption that is on by
+// default switched every limit off in production (decision 067).
+export function exemptLoopbackFromEnv(value: string | undefined): boolean {
+  return value?.trim() === "true";
+}
+
 export const rateLimitSettings = {
-  // Requests whose connection comes from this machine (the API's own tests,
-  // the local e2e run, local development) aren't limited. This looks at the
-  // TCP connection itself, never at a header, so it can't be faked from
-  // outside; on Render, requests arrive from Render's proxy, not loopback.
-  // The rate-limit tests turn this off.
-  exemptLoopback: true,
+  exemptLoopback: exemptLoopbackFromEnv(process.env.RATE_LIMIT_EXEMPT_LOOPBACK),
   now: () => Date.now(),
 };
 

@@ -11,4 +11,6 @@ export default {
   testMatch: ["**/src/**/*.test.ts"],
   // Run every test in UTC, like Render (see the file for why)
   globalSetup: "./jest.global-setup.js",
+  // Loopback exempt from rate limits in tests (see the file for why)
+  setupFiles: ["./jest.setup-env.js"],
 };
