@@ -1357,8 +1357,14 @@ Ticket checks count before `requireRole`, so an attendee calling it is counted t
 - **Not logged in → 401, never counted.** No session cookie: `requireAuth` answers without a
   database call. A made-up cookie: one Postgres read (`findUnique` on the session id, the
   primary key) and a 401, with no limit on how many. Cheap, but not free; an edge rate limit
-  would stop a flood (README, "How I'd scale this"). No per-IP limit before `requireAuth`: it
-  would put all Vercel visitors in one bucket again.
+  would stop a flood (README, "How I'd scale this").
+- **Rejected: a per-IP limit for requests that fail `requireAuth`.** After `requireAuth` (so
+  logged-in users are never counted), it saves no reads: we only know a made-up cookie failed
+  after the Postgres lookup, so a flood still costs 1 read per request and only the 401 becomes
+  a 429. It also adds a Redis INCR per failed request, which uses the Upstash free quota (062).
+  Before `requireAuth` (checking the IP's count first, to skip the read), it would block
+  everyone on that IP, logged in or not; behind Vercel that is every visitor, so anyone could
+  block holds and ticket checks for all Vercel users.
 - **Login and sign-up are shared per Vercel IP:** all visitors through Vercel share 10 logins
   a minute and 10 sign-ups an hour. Fine for a small site; nobody can fake their IP, and the
   per-account login wait (065) doesn't depend on the IP.

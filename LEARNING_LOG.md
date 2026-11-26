@@ -1439,5 +1439,15 @@ yet, so they stay per IP.
 **Order matters:** the limit runs after `requireAuth`, so a request that isn't logged in gets
 401 and never uses up anyone's limit. The cost: those 401s aren't limited at all.
 
+**Why not an IP limit for requests that fail the login check?** To know a made-up cookie is fake, we must look
+it up in Postgres first. So a limit after that saves no reads (it only turns 401 into 429, and
+adds a Redis command). A limit before it would block everyone on the IP, and behind Vercel
+that's every visitor.
+
+**Possible later improvement (not built):** check the session token's format (length and
+characters) before the Postgres lookup, and answer 401 at once if it can't be a real token.
+Cheap and safe, but it only stops badly made cookies: well-formed random tokens still cost one
+read.
+
 **Interview line:** "I key a rate limit on the most reliable identity I have: the user id when
 there's a session, the IP only before login, because behind a proxy many people share one IP."
