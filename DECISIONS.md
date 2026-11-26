@@ -1334,3 +1334,46 @@ Redis counters, which expire.
 - C, a normal read: `GET /api/v1/events?limit=1` at 07:44:11 → `200`.
 Revisit if: requests on Render stop arriving on loopback (then the exemption is harmless but
 still not needed there).
+
+## 068 — Seat holds and ticket checks limited per user; login and sign-up stay per IP
+Date: 2026-11-26 (issue #85)
+**Problem:** with `TRUST_PROXY_HOPS=3` (decision 067), everyone who comes through the Vercel
+rewrite has Vercel's IP. Per-IP limits on holds and ticket checks meant all visitors shared
+30 holds and 120 ticket checks a minute: a busy sale or two doors scanning could hit it.
+**Options:**
+(1) keep per IP and raise the numbers: still one shared bucket, and still higher for anyone
+calling Render directly
+(2) a secret header on the Vercel route so the API can trust 4 hops for those requests:
+fixes every route, but needs a secret in Vercel and Render, a `proxy.ts`, and rotation
+(3) (chosen) **per user where we know the user:** holds and ticket checks need a login, so
+count them by the user id from the session (`limitByUser`, after `requireAuth`). Login and
+sign-up stay per IP: there is no user yet.
+**Why the user id:** it comes from the session, so it can't be faked and doesn't depend on
+proxies. Two people behind one IP (Vercel, an office, a venue's Wi-Fi) don't share a limit, and
+one person can't get more by changing IP. Same numbers, now per user: 30 holds a minute (a
+person never needs more) and 120 ticket checks a minute (2 a second at one door).
+Ticket checks count before `requireRole`, so an attendee calling it is counted too (403s).
+**Trade-offs:**
+- **Not logged in → 401, never counted.** No session cookie: `requireAuth` answers without a
+  database call. A made-up cookie: one Postgres read (`findUnique` on the session id, the
+  primary key) and a 401, with no limit on how many. Cheap, but not free; an edge rate limit
+  would stop a flood (README, "How I'd scale this").
+- **Rejected: a per-IP limit for requests that fail `requireAuth`.** After `requireAuth` (so
+  logged-in users are never counted), it saves no reads: we only know a made-up cookie failed
+  after the Postgres lookup, so a flood still costs 1 read per request and only the 401 becomes
+  a 429. It also adds a Redis INCR per failed request, which uses the Upstash free quota (062).
+  Before `requireAuth` (checking the IP's count first, to skip the read), it would block
+  everyone on that IP, logged in or not; behind Vercel that is every visitor, so anyone could
+  block holds and ticket checks for all Vercel users.
+- **Login and sign-up are shared per Vercel IP:** all visitors through Vercel share 10 logins
+  a minute and 10 sign-ups an hour. Fine for a small site; nobody can fake their IP, and the
+  per-account login wait (065) doesn't depend on the IP.
+- **A third path:** Vercel's servers calling `API_URL` (Server Components) arrive with 3
+  entries, like direct calls; `req.ip` is Vercel's server IP. Seen at 07:13:30 and 07:41:20
+  UTC; all are GETs that aren't limited.
+**How I'd fix it at scale:** option 2. Vercel's proxy adds a secret header, the API compares
+it in constant time and trusts 4 hops only then; each visitor gets their own IP on login and
+sign-up, and direct callers still can't fake theirs.
+Revisit if: login or sign-up are hit by the shared Vercel limit (real users get 429), or
+holds or ticket checks move to a Server Action (the session cookie is forwarded, so per user
+still works).

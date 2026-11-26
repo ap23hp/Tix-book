@@ -10,6 +10,7 @@ import request from "supertest";
 import app from "../app.js";
 import { prisma } from "../lib/prisma.js";
 import { hashPassword } from "../lib/password.js";
+import { createSession, SESSION_COOKIE } from "../lib/session.js";
 import { MemoryStore, type KeyValueStore } from "../lib/kv-store.js";
 import { setStoreForTests } from "../lib/redis.js";
 import {
@@ -19,7 +20,7 @@ import {
   waitAfterFailures,
 } from "../lib/rate-limit.js";
 
-// Rate limits (decisions 064, 065) with the in-memory store and a fake
+// Rate limits (decisions 064, 065, 068) with the in-memory store and a fake
 // clock. Supertest always connects from 127.0.0.1, which is normally exempt,
 // so the exemption is turned off here, and each "visitor" gets its own IP
 // through X-Forwarded-For (trusted for 1 hop in this file only).
@@ -136,39 +137,6 @@ describe("per-IP limits", () => {
     ).toBe(0);
   });
 
-  it("seat holds: 30 a minute per IP (counted before the login check)", async () => {
-    const ip = newIp();
-    for (let i = 0; i < LIMITS.hold.limit; i++) {
-      const res = await request(app)
-        .post("/api/v1/events/some-event/bookings")
-        .set("X-Forwarded-For", ip)
-        .send({});
-      expect(res.status).toBe(401);
-    }
-    const blocked = await request(app)
-      .post("/api/v1/events/some-event/bookings")
-      .set("X-Forwarded-For", ip)
-      .send({});
-    expect(blocked.status).toBe(429);
-    expect(blocked.get("Retry-After")).toBe("30");
-  });
-
-  it("ticket verify: 120 a minute per IP", async () => {
-    const ip = newIp();
-    for (let i = 0; i < LIMITS.ticketVerify.limit; i++) {
-      await request(app)
-        .post("/api/v1/tickets/verify")
-        .set("X-Forwarded-For", ip)
-        .send({})
-        .expect(401);
-    }
-    const blocked = await request(app)
-      .post("/api/v1/tickets/verify")
-      .set("X-Forwarded-For", ip)
-      .send({});
-    expect(blocked.status).toBe(429);
-  });
-
   it("doesn't limit routes that aren't listed (the event list)", async () => {
     const ip = newIp();
     for (let i = 0; i < 15; i++) {
@@ -178,6 +146,101 @@ describe("per-IP limits", () => {
         .expect(200);
     }
   });
+});
+
+// Seat holds and ticket checks: per logged-in user, after requireAuth
+// (decision 068). Bodies are empty, so a counted request that gets through
+// is a 400 (invalid body) and nothing is written to the database.
+describe("per-user limits", () => {
+  // A logged-in user with a session cookie, created once per test
+  async function loggedIn(role: "ATTENDEE" | "ORGANISER", label: string) {
+    const user = await prisma.user.create({
+      data: {
+        name: `Per-user ${label}`,
+        role,
+        email: `ratelimit-test-user-${label}-${runId}@example.com`,
+      },
+    });
+    const { token } = await createSession(user.id);
+    return `${SESSION_COOKIE}=${token}`;
+  }
+
+  function hold(ip: string, cookie?: string) {
+    const req = request(app)
+      .post("/api/v1/events/some-event/bookings")
+      .set("X-Forwarded-For", ip);
+    if (cookie) req.set("Cookie", cookie);
+    return req.send({});
+  }
+
+  function verify(ip: string, cookie?: string) {
+    const req = request(app)
+      .post("/api/v1/tickets/verify")
+      .set("X-Forwarded-For", ip);
+    if (cookie) req.set("Cookie", cookie);
+    return req.send({});
+  }
+
+  it("seat holds: 30 a minute per user; two users on one IP don't share it", async () => {
+    const ip = newIp(); // e.g. everyone coming through Vercel
+    const amy = await loggedIn("ATTENDEE", "amy");
+    const ben = await loggedIn("ATTENDEE", "ben");
+
+    for (let i = 0; i < LIMITS.hold.limit; i++) {
+      expect((await hold(ip, amy)).status).toBe(400);
+    }
+    const blocked = await hold(ip, amy);
+    expect(blocked.status).toBe(429);
+    expect(blocked.get("Retry-After")).toBe("30");
+
+    // Same IP, another user: not affected
+    expect((await hold(ip, ben)).status).toBe(400);
+  });
+
+  it("seat holds: one user is limited across IPs (changing IP doesn't help)", async () => {
+    const cleo = await loggedIn("ATTENDEE", "cleo");
+    for (let i = 0; i < LIMITS.hold.limit; i++) {
+      expect((await hold(newIp(), cleo)).status).toBe(400);
+    }
+    expect((await hold(newIp(), cleo)).status).toBe(429);
+  });
+
+  it("anonymous holds get 401 before any counting (they never use up a limit)", async () => {
+    const ip = newIp();
+    for (let i = 0; i < LIMITS.hold.limit + 5; i++) {
+      expect((await hold(ip)).status).toBe(401);
+    }
+    // A made-up cookie is also just a 401
+    expect((await hold(ip, `${SESSION_COOKIE}=made-up`)).status).toBe(401);
+
+    // A logged-in user on that same IP still has the whole limit
+    const dev = await loggedIn("ATTENDEE", "dev");
+    expect((await hold(ip, dev)).status).toBe(400);
+  });
+
+  it("ticket checks: 120 a minute per user, anonymous ones get 401", async () => {
+    const ip = newIp();
+    const door = await loggedIn("ORGANISER", "door");
+    const otherDoor = await loggedIn("ORGANISER", "otherdoor");
+
+    for (let i = 0; i < LIMITS.ticketVerify.limit; i++) {
+      expect((await verify(ip, door)).status).toBe(400);
+    }
+    expect((await verify(ip, door)).status).toBe(429);
+
+    // Another organiser on the same IP: not affected
+    expect((await verify(ip, otherDoor)).status).toBe(400);
+    // Not logged in: 401, not 429
+    expect((await verify(ip)).status).toBe(401);
+  }, 30_000); // 120 logged-in requests, each with a session lookup in Postgres
+
+  it("ticket checks: attendees are counted too (before the 403)", async () => {
+    const eve = await loggedIn("ATTENDEE", "eve");
+    for (let i = 0; i < LIMITS.ticketVerify.limit; i++) {
+      expect((await verify(newIp(), eve)).status).toBe(403);
+    }
+    expect((await verify(newIp(), eve)).status).toBe(429);
+  }, 30_000);
 });
 
 describe("login: per-account wait after failures", () => {

@@ -203,6 +203,24 @@ Phase 6 sends a few emails a day in sandbox mode. For real traffic I would:
 - **Move to Amazon SES at volume:** much cheaper per email, but more setup (sandbox approval, its own bounce handling through SNS). Keep the `EmailSender` interface, so it's one new class.
 - Watch the numbers: queue length, dead letter count, bounce and complaint rates, with alerts (phase 8).
 
+## How I'd scale this
+
+Rate limits today (decisions 064–068): seat holds and ticket checks are limited **per logged-in user**; login and sign-up are limited **per IP**, because we don't know the user yet. On free plans, there are three paths to the API, and they don't look the same:
+
+| Path | `X-Forwarded-For` entries | `req.ip` with `TRUST_PROXY_HOPS=3` |
+|---|---|---|
+| Browser → Vercel rewrite → Render | 4 (Vercel replaces the header) | Vercel's IP, shared by every visitor |
+| Anyone → Render directly | 3 (Render keeps the client's header and appends) | the real caller; a made-up header can't change it |
+| Vercel's servers (Server Components) → Render | 3 | Vercel's server IP (only GETs that aren't limited) |
+
+So today all visitors through Vercel share one login and one sign-up limit per Vercel IP. That's acceptable for a small site, and it's safe: nobody can fake their IP. With real traffic I would:
+
+- **Add a secret header on the Vercel route.** Vercel's proxy adds `X-Origin-Secret` (stored in Vercel and Render), and the API trusts 4 hops only when it matches, compared in constant time. Then each visitor through Vercel gets their own IP again, and direct callers still can't fake theirs. Rotate the secret like any other.
+- **Or block direct traffic** once everything goes through one proxy (a paid plan with private networking or an IP allowlist), so there is only one path and one hop count.
+- **Rate-limit at the edge as well** (a WAF or the host's rate limiting), so floods are stopped before they reach Express or Postgres. Today a made-up session cookie costs one Postgres read before the 401.
+- **Move to a sliding window** if the fixed window's 2× burst at a boundary matters (more Redis commands).
+- **Run more than one API instance** only with Redis healthy: the in-memory fallback counts per process, so the limit would become limit × instances while Redis is down.
+
 ## Roadmap
 
 | Phase | Focus | Status |

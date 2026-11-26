@@ -1426,3 +1426,28 @@ load, so tests don't depend on what's in my `.env`.
 **Interview line:** "A security setting should fail safe: if the variable is missing, the
 protection is on. Our rate-limit exemption was on by default, and on Render every request
 looked local, so the limits were silently off until I made it opt-in."
+
+## Rate-limit by the most reliable identity you have (#85, 26 Nov 2026)
+
+**The problem:** behind Vercel, every visitor has Vercel's IP, so a per-IP limit is one bucket
+for everyone.
+
+**The fix:** where the user is logged in (seat holds, ticket checks), count by the user id from
+the session. It can't be faked and doesn't depend on proxies. Login and sign-up have no user
+yet, so they stay per IP.
+
+**Order matters:** the limit runs after `requireAuth`, so a request that isn't logged in gets
+401 and never uses up anyone's limit. The cost: those 401s aren't limited at all.
+
+**Why not an IP limit for requests that fail the login check?** To know a made-up cookie is fake, we must look
+it up in Postgres first. So a limit after that saves no reads (it only turns 401 into 429, and
+adds a Redis command). A limit before it would block everyone on the IP, and behind Vercel
+that's every visitor.
+
+**Possible later improvement (not built):** check the session token's format (length and
+characters) before the Postgres lookup, and answer 401 at once if it can't be a real token.
+Cheap and safe, but it only stops badly made cookies: well-formed random tokens still cost one
+read.
+
+**Interview line:** "I key a rate limit on the most reliable identity I have: the user id when
+there's a session, the IP only before login, because behind a proxy many people share one IP."

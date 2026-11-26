@@ -3,12 +3,14 @@ import type { Request, RequestHandler, Response } from "express";
 import { HttpError } from "./errors.js";
 import { MemoryStore, type KeyValueStore } from "./kv-store.js";
 import { KEY_PREFIX, store } from "./redis.js";
+import { getUser } from "../middleware/auth.js";
 
-// Rate limiting (phase 7, decisions 064 and 065).
+// Rate limiting (phase 7, decisions 064, 065 and 068).
 //
-// 1. Per IP, a fixed window: at most `limit` requests per window, counted in
-//    one key per window. Over the limit → 429 with Retry-After (seconds until
-//    the window ends).
+// 1. A fixed window: at most `limit` requests per window, counted in one key
+//    per window. Over the limit → 429 with Retry-After (seconds until the
+//    window ends). Counted per IP before login (login, sign-up), and per
+//    logged-in user where we know who it is (seat holds, ticket checks).
 // 2. Login, per account: after 5 failed logins for an email, each next try
 //    must wait 30 s, then 1, 2, 4, 8 minutes, at most 15. A correct password
 //    clears it. Counts are forgotten 24 h after the last failure. Never a
@@ -88,22 +90,45 @@ function tooMany(res: Response, waitMs: number): never {
   );
 }
 
-// Middleware: limit this route per client IP. req.ip depends on the
-// "trust proxy" setting in app.ts (behind Vercel and Render).
-export function limitByIp(name: LimitName): RequestHandler {
+// One more request for `who` on this route: 429 if it's over the limit.
+// Fixed windows: minute 0-1, 1-2, ... Each window has its own key that
+// expires when the window ends, so nothing needs cleaning up.
+async function countRequest(
+  name: LimitName,
+  who: string,
+  res: Response,
+): Promise<void> {
   const { limit, windowMs } = LIMITS[name];
+  const now = rateLimitSettings.now();
+  const window = Math.floor(now / windowMs);
+  const windowEnd = (window + 1) * windowMs;
+  const key = `${KEY_PREFIX}rl:${name}:${hashed(who)}:${window}`;
+
+  const count = await counted((s) => s.incr(key, windowEnd));
+  if (count > limit) tooMany(res, windowEnd - now);
+}
+
+// Middleware: limit this route per client IP. For routes where we don't know
+// the user yet (login, sign-up). req.ip depends on the "trust proxy" setting
+// in app.ts: with 3 hops, everyone who comes through Vercel has Vercel's IP,
+// so they share these limits (decision 068).
+export function limitByIp(name: LimitName): RequestHandler {
   return async (req, res, next) => {
     if (isExempt(req)) return next();
+    await countRequest(name, req.ip ?? "unknown", res);
+    next();
+  };
+}
 
-    const now = rateLimitSettings.now();
-    // Fixed windows: minute 0-1, 1-2, ... Each window has its own key that
-    // expires when the window ends, so nothing needs cleaning up.
-    const window = Math.floor(now / windowMs);
-    const windowEnd = (window + 1) * windowMs;
-    const key = `${KEY_PREFIX}rl:${name}:${hashed(req.ip ?? "unknown")}:${window}`;
-
-    const count = await counted((s) => s.incr(key, windowEnd));
-    if (count > limit) tooMany(res, windowEnd - now);
+// Middleware: limit this route per logged-in user. Goes AFTER requireAuth:
+// the user id comes from the session, so it can't be faked and doesn't depend
+// on proxies or IPs. Two people behind one IP don't share a limit, and one
+// person can't get more by changing IP (decision 068).
+// "user:" keeps these keys apart from IP keys on the same route.
+export function limitByUser(name: LimitName): RequestHandler {
+  return async (req, res, next) => {
+    if (isExempt(req)) return next();
+    await countRequest(name, `user:${getUser(res).id}`, res);
     next();
   };
 }

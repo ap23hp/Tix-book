@@ -16,7 +16,7 @@ import { bookingEventSelect, bookingView } from "../lib/booking-view.js";
 import { holdSeatsSchema } from "../schemas/booking.js";
 import { findOwnEvent } from "../lib/own-event.js";
 import { cachedEvents, invalidateEvents } from "../lib/event-cache.js";
-import { limitByIp } from "../lib/rate-limit.js";
+import { limitByUser } from "../lib/rate-limit.js";
 export const eventsRouter = Router();
 
 // GET /api/v1/events → published, upcoming events, soonest first.
@@ -270,8 +270,9 @@ eventsRouter.post(
 // the same booking again; 409 = not enough seats, or the event has started.
 eventsRouter.post(
   "/:id/bookings",
-  limitByIp("hold"),
   requireAuth,
+  // Per user, after requireAuth: not logged in → 401, never counted
+  limitByUser("hold"),
   async (req, res) => {
     const { seats, idempotencyKey } = parseOrThrow(
       holdSeatsSchema,
