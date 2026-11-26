@@ -17,6 +17,7 @@ import { holdSeatsSchema } from "../schemas/booking.js";
 import { findOwnEvent } from "../lib/own-event.js";
 import { cachedEvents, invalidateEvents } from "../lib/event-cache.js";
 import { limitByUser } from "../lib/rate-limit.js";
+import { allowPublicCache } from "../lib/cache-headers.js";
 export const eventsRouter = Router();
 
 // GET /api/v1/events → published, upcoming events, soonest first.
@@ -85,6 +86,8 @@ eventsRouter.get("/", async (req, res) => {
     (event) => new Date(event.startsAt).getTime() > now,
   );
 
+  // The same for everyone: a short CDN cache is fine (decision 072)
+  allowPublicCache(res);
   res.status(200).json({
     // Seats left always comes fresh from Postgres, never from the cache.
     // Same calculation as GET /:id (lib/seats.ts)
@@ -237,6 +240,7 @@ eventsRouter.get("/:id", async (req, res) => {
   // Fresh from Postgres on every request. Same calculation as the list
   // (lib/seats.ts)
   const [withSeats] = await withSeatsLeft([event]);
+  allowPublicCache(res);
   res.status(200).json(withSeats);
 });
 

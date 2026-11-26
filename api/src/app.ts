@@ -9,6 +9,7 @@ import { HttpError } from "./lib/errors.js";
 import { paymentsRouter } from "./routes/payments.js";
 import { ticketsRouter } from "./routes/tickets.js";
 import { createProxyLogger } from "./lib/proxy-log.js";
+import { NO_STORE, noStoreByDefault } from "./lib/cache-headers.js";
 const app = express();
 
 // How many proxies sit in front of the API, so req.ip is the visitor's IP
@@ -28,6 +29,10 @@ app.use(
   "/api",
   createProxyLogger({ trustProxy: () => app.get("trust proxy") }),
 );
+
+// Nothing from the API is cached unless a route says so (decision 072):
+// Vercel's CDN honours our Cache-Control on the rewrite
+app.use("/api", noStoreByDefault);
 
 // Stripe webhooks first: they need the raw body for the signature check,
 // so they must come before express.json(). They also skip the CSRF check,
@@ -54,6 +59,8 @@ app.use((_req, res) => {
 // Any error thrown in a route ends up here.
 // Always replies with the same shape: { error, details? }
 const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
+  // An error is never cached, even if the route had allowed it
+  res.set("Cache-Control", NO_STORE);
   // Errors we threw on purpose (404, 400 with details, ...)
   if (err instanceof HttpError) {
     res.status(err.status).json({
