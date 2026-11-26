@@ -1309,7 +1309,18 @@ during development, which shows at once; the cost of the old way was no limits i
 production, which showed nowhere.
 Trade-off: one more line in local `.env`; anything that runs the API on this machine without
 it (a fresh clone) gets the real limits.
-Also checked: `TRUST_PROXY_HOPS=3` is set on Render (my choice, from the `[proxy]` counts).
-With the limits on, Vercel users share the login and sign-up limits per Vercel IP until PR 2.
+**Which IP, proven (26 Nov, after a restart at 07:34:10 UTC with `TRUST_PROXY_HOPS=3`):**
+two `GET /api/v1/events?limit=1` with a made-up `X-Forwarded-For: 203.0.113.9`.
+- Direct to Render: `entries=4 via-vercel=false trust-proxy=3` (3 without the made-up
+  header). Render **keeps** the client's header and appends: `[made-up, client, hop, hop]`.
+  With n=3, `req.ip` = `XFF[length − 3]` = the real client, so a made-up header can't change it.
+- Through Vercel: `entries=4 via-vercel=true trust-proxy=3` (4 without it too). Vercel
+  **replaces** the header: `[visitor, Vercel, hop, hop]`. With n=3, `req.ip` = Vercel's IP.
+- A third path: Vercel's servers calling `API_URL` (Server Components) look like direct
+  requests (`entries=3`), but still have `x-vercel-id`; `req.ip` = Vercel's server IP. All of
+  them are GETs that aren't rate-limited. So `x-vercel-id` doesn't mean "came through the
+  rewrite".
+So `TRUST_PROXY_HOPS=3` (set on Render by me) is the only value nobody can fake. With the
+limits on, Vercel users share the login and sign-up limits per Vercel IP until PR 2.
 Revisit if: requests on Render stop arriving on loopback (then the exemption is harmless but
 still not needed there).
